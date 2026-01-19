@@ -331,22 +331,22 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.08;
+renderer.toneMappingExposure = 1.12;
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(new THREE.Color('#f2efff'), 7, 16);
 
 const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.02, 60);
-camera.position.set(3.2, 2.25, 3.45);
+camera.position.set(3.25, 2.05, 3.65);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.06;
-controls.target.set(0.2, 1.0, -0.1);
+controls.target.set(0.12, 0.98, -0.12);
 controls.minDistance = 2.6;
 controls.maxDistance = 6.2;
-controls.minPolarAngle = 0.45;
-controls.maxPolarAngle = 1.25;
+controls.minPolarAngle = 0.55;
+controls.maxPolarAngle = 1.18;
 controls.minAzimuthAngle = -1.4;
 controls.maxAzimuthAngle = 0.4;
 
@@ -406,11 +406,27 @@ const matPlaster = new THREE.MeshStandardMaterial({
   roughnessMap: plasterRough,
   roughness: 1.0,
   metalness: 0.0,
-  color: new THREE.Color('#ffffff')
+  color: new THREE.Color('#fff8ff')
 });
 
 const matBase = new THREE.MeshStandardMaterial({ color: '#f4f1ff', roughness: 0.95, metalness: 0.0 });
-const matFloor = new THREE.MeshStandardMaterial({ color: '#f7c9df', roughness: 0.9 });
+const floorDiff = woodDiff.clone();
+floorDiff.wrapS = floorDiff.wrapT = THREE.RepeatWrapping;
+floorDiff.repeat.set(4.6, 2.8);
+floorDiff.needsUpdate = true;
+
+const floorRough = woodRough.clone();
+floorRough.wrapS = floorRough.wrapT = THREE.RepeatWrapping;
+floorRough.repeat.copy(floorDiff.repeat);
+floorRough.needsUpdate = true;
+
+const matFloor = new THREE.MeshStandardMaterial({
+  map: floorDiff,
+  roughnessMap: floorRough,
+  roughness: 1.0,
+  metalness: 0.0,
+  color: new THREE.Color('#ffe9d6')
+});
 const matWater = new THREE.MeshPhysicalMaterial({
   color: new THREE.Color('#a8d2ff'),
   roughness: 0.25,
@@ -595,13 +611,32 @@ root.add(room);
   room.add(right);
 }
 
-// top wooden beam
+// top frame (open ceiling)
 {
-  const beam = new THREE.Mesh(new THREE.BoxGeometry(2.75, 0.22, 2.20), matWood);
-  beam.position.set(0.06, 1.69, 0.02);
-  beam.castShadow = true;
-  beam.receiveShadow = true;
-  room.add(beam);
+  const frame = new THREE.Group();
+  const h = 0.18;
+  const t = 0.18;
+  const y = 1.68;
+  const lenX = 2.75;
+  const lenZ = 2.20;
+
+  const left = new THREE.Mesh(new THREE.BoxGeometry(t, h, lenZ), matWood);
+  left.position.set(-1.17, y, 0.02);
+  left.castShadow = true;
+  left.receiveShadow = true;
+
+  const right = new THREE.Mesh(new THREE.BoxGeometry(t, h, lenZ), matWood);
+  right.position.set(1.29, y, 0.02);
+  right.castShadow = true;
+  right.receiveShadow = true;
+
+  const back = new THREE.Mesh(new THREE.BoxGeometry(lenX, h, t), matWood);
+  back.position.set(0.06, y, -0.97);
+  back.castShadow = true;
+  back.receiveShadow = true;
+
+  frame.add(left, right, back);
+  room.add(frame);
 }
 
 // -------------------------
@@ -723,7 +758,7 @@ room.add(menu);
 function makePlank(label, id, y) {
   const geo = new THREE.BoxGeometry(0.48, 0.12, 0.07);
   const tex = makeCanvasTextTexture(label, { font: '800 44px ui-rounded, system-ui, sans-serif', fg: '#3b2c23', padding: 18 });
-  const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95, metalness: 0.0, color: new THREE.Color('#ffffff') });
+  const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95, metalness: 0.0, color: new THREE.Color('#fff8ff') });
   const plank = new THREE.Mesh(geo, mat);
   plank.position.set(0, y, 0);
   plank.castShadow = true;
@@ -748,6 +783,10 @@ function registerInteractable(obj, id) {
   interactableRoots.set(id, obj);
 }
 
+let chairRig = null;
+let chairBaseX = 0;
+let chairBaseRot = 0;
+
 async function buildFurniture() {
   // Drawer
   const drawer = await loadGLB('assets/models/furniture/sideTableDrawers.glb');
@@ -768,14 +807,39 @@ async function buildFurniture() {
   tintModel(desk, { color: '#d9b37e', roughness: 0.88 });
   room.add(desk);
 
-  // Chair
+  // Cardboard boxes (under desk)
+  const box1 = await loadGLB('assets/models/furniture/cardboardBoxClosed.glb');
+  box1.position.set(-0.30, 0.23, -0.46);
+  box1.rotation.y = -0.35;
+  box1.scale.setScalar(0.72);
+  setCastShadow(box1, true, true);
+  tintModel(box1, { color: '#f2e4d6', roughness: 0.98 });
+  room.add(box1);
+
+  const box2 = await loadGLB('assets/models/furniture/cardboardBoxOpen.glb');
+  box2.position.set(-0.02, 0.23, -0.44);
+  box2.rotation.y = -0.15;
+  box2.scale.setScalar(0.68);
+  setCastShadow(box2, true, true);
+  tintModel(box2, { color: '#f2e4d6', roughness: 0.98 });
+  room.add(box2);
+
+  // Chair (idle sway)
+  chairRig = new THREE.Group();
+  chairRig.position.set(0.10, 0.25, 0.12);
+  chairRig.rotation.y = -0.45;
+  chairBaseX = chairRig.position.x;
+  chairBaseRot = chairRig.rotation.y;
+  room.add(chairRig);
+  registerInteractable(chairRig, 'chair');
+
   const chair = await loadGLB('assets/models/furniture/chairDesk.glb');
-  chair.position.set(0.10, 0.25, 0.12);
-  chair.rotation.y = -0.45;
+  chair.position.set(0, 0, 0);
+  chair.rotation.set(0, 0, 0);
   chair.scale.setScalar(0.92);
   setCastShadow(chair, true, true);
   tintModel(chair, { color: '#f1c0da', roughness: 0.9 });
-  room.add(chair);
+  chairRig.add(chair);
 
   // Computer screen (we'll add our screen plane in front)
   const screenModel = await loadGLB('assets/models/furniture/computerScreen.glb');
@@ -1120,7 +1184,7 @@ function setHover(obj) {
   hovered = obj;
   document.body.classList.toggle('is-hovering', Boolean(hovered));
 
-  if (hovered) setSquishTargets(hovered, 0.55);
+  if (hovered) setSquishTargets(hovered, 0.28);
 }
 
 canvas.addEventListener('pointermove', onPointerMove);
@@ -1166,23 +1230,27 @@ function clickToPiano(intersect) {
 
 canvas.addEventListener('pointerdown', (e) => {
   // unlock audio
+  onPointerMove(e);
   initAudio();
 });
 
 canvas.addEventListener('click', (e) => {
+  onPointerMove(e);
   raycaster.setFromCamera(pointer, camera);
   const hits = raycaster.intersectObjects([room], true);
   if (!hits.length) return;
 
-  // piano key direct
-  if (clickToPiano(hits[0])) return;
+  // piano key direct (scan all hits so the body/stand doesn't steal the click)
+  for (const h of hits) {
+    if (clickToPiano(h)) return;
+  }
 
   const rootObj = findClickableRoot(hits[0].object);
   if (!rootObj) return;
 
   // punch scale
-  setSquishTargets(rootObj, 0.85);
-  setTimeout(() => setSquishTargets(rootObj, rootObj === hovered ? 0.55 : 0), 90);
+  setSquishTargets(rootObj, 0.42);
+  setTimeout(() => setSquishTargets(rootObj, rootObj === hovered ? 0.28 : 0), 90);
 
   runAction(rootObj.userData.id);
 });
@@ -1259,6 +1327,13 @@ function tick(now) {
   updateSprings(dt);
   updatePianoPress(dt);
   updateMonitor(dt);
+
+  // Chair idle sway (slow, subtle)
+  if (chairRig) {
+    const t = now * 0.00022;
+    chairRig.position.x = chairBaseX + Math.sin(t) * 0.028;
+    chairRig.rotation.y = chairBaseRot + Math.sin(t * 0.85) * 0.055;
+  }
 
   renderer.render(scene, camera);
   requestAnimationFrame(tick);
