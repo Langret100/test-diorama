@@ -122,21 +122,68 @@ controls.enablePan = false;
 controls.update();
 
 function focusCameraOn(object3d) {
-  // Robust framing (works regardless of initial camera/target and model placement).
-  const box = new THREE.Box3().setFromObject(object3d);
+  // Robust framing that ignores huge outlier meshes (e.g., Plane.002).
+  // Some GLBs include massive helper/ground planes that blow up the bounds.
+
+  const meshes = [];
+  object3d.traverse((o) => {
+    if (!o.isMesh) return;
+    if (o.visible === false) return;
+    meshes.push(o);
+  });
+
+  const items = [];
+  for (const m of meshes) {
+    const b = new THREE.Box3().setFromObject(m);
+    if (!Number.isFinite(b.min.x) || !Number.isFinite(b.max.x)) continue;
+    const s = new THREE.Vector3();
+    b.getSize(s);
+    const maxDim = Math.max(s.x, s.y, s.z);
+    items.push({ m, b, s, maxDim });
+  }
+  if (!items.length) {
+    debug('(warn) No mesh bounds found; using default camera.');
+    return;
+  }
+
+  // thresholds tuned for this scene (room is ~1-4 units; outlier plane is ~100+)
+  const maxDimsSorted = items.map(x => x.maxDim).sort((a, b) => a - b);
+  const median = maxDimsSorted[Math.floor(maxDimsSorted.length * 0.5)] || maxDimsSorted[0];
+  const secondLargest = maxDimsSorted.length > 1 ? maxDimsSorted[maxDimsSorted.length - 2] : maxDimsSorted[0];
+  const largest = maxDimsSorted[maxDimsSorted.length - 1];
+  const outlierDim = Math.max(12, median * 8);
+  const extremeJump = (secondLargest > 0) ? (largest > secondLargest * 8) : false;
+
+  const outliers = [];
+  const kept = [];
+  for (const it of items) {
+    const isHuge = it.maxDim > outlierDim;
+    const isHugePlane = (it.s.x > 30 && it.s.z > 30 && it.s.y < 2);
+    const isOutlier = isHuge || isHugePlane || (extremeJump && it.maxDim === largest);
+    if (isOutlier) outliers.push(it);
+    else kept.push(it);
+  }
+
+  // Build core bounds from kept meshes; if we kept too little, fall back to all.
+  const use = kept.length >= Math.max(6, Math.floor(items.length * 0.25)) ? kept : items;
+  const box = new THREE.Box3();
+  for (const it of use) box.union(it.b);
+
   const center = box.getCenter(new THREE.Vector3());
   const size = box.getSize(new THREE.Vector3());
   const maxDim = Math.max(size.x, size.y, size.z);
   const radius = Math.max(0.001, maxDim * 0.55);
 
-  // Place the ground slightly below the model so the shadow catcher doesn't hide it.
+  // Move shadow catcher slightly below model
   const minY = box.min.y;
   ground.position.y = minY - 0.01;
 
-  // Camera distance based on fov.
+  // Camera distance based on fov
   const fov = THREE.MathUtils.degToRad(camera.fov);
   const dist = radius / Math.tan(fov / 2);
-  const dir = new THREE.Vector3(1, 0.55, 1).normalize();
+
+  // Place camera at a 'hero' angle similar to the reference (front-right, slightly above).
+  const dir = new THREE.Vector3(1.0, 0.58, 1.25).normalize();
   camera.near = Math.max(0.01, dist / 100);
   camera.far = Math.max(50, dist * 10);
   camera.updateProjectionMatrix();
@@ -147,17 +194,24 @@ function focusCameraOn(object3d) {
   controls.maxDistance = Math.max(3.8, dist * 1.8);
   controls.update();
 
-  // Re-scale fog to the actual scene scale.
+  // Re-scale fog to the actual scene scale
   if (scene.fog) {
-    // Keep a gentle pastel haze without hiding the whole model when units are large.
-    const near = Math.max(6, dist * 0.35);
-    const far  = Math.max(18, dist * 2.4);
+    const near = Math.max(2.5, dist * 0.35);
+    const far  = Math.max(12.0, dist * 2.4);
     scene.fog.near = near;
     scene.fog.far  = far;
   }
 
+  if (outliers.length) {
+    const names = outliers.slice(0, 6).map(o => o.m.name || '(unnamed)').join(', ');
+    debug(`(info) core frame used. outliers=${outliers.length} [${names}${outliers.length>6?'…':''}]`);
+    // Hide only very huge planes by default
+    for (const it of outliers) {
+      if (it.s.x > 30 && it.s.z > 30 && it.s.y < 2) it.m.visible = false;
+    }
+  }
 
-  debug(`(info) frame: size=(${size.x.toFixed(2)},${size.y.toFixed(2)},${size.z.toFixed(2)}) cam=(${camera.position.x.toFixed(2)},${camera.position.y.toFixed(2)},${camera.position.z.toFixed(2)})`);
+  debug(`(info) frame(core): size=(${size.x.toFixed(2)},${size.y.toFixed(2)},${size.z.toFixed(2)}) dist=${dist.toFixed(2)} cam=(${camera.position.x.toFixed(2)},${camera.position.y.toFixed(2)},${camera.position.z.toFixed(2)})`);
 }
 
 
