@@ -1,6 +1,6 @@
 {
-  "intervalMs": 3500,
-  "fadeMs": 850,
+  "intervalMs": 3200,
+  "fadeMs": 650,
   "images": [
     "./assets/monitor/monitor1.png",
     "./assets/monitor/monitor2.png",

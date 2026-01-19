@@ -1,46 +1,28 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="description" content="Pastel diorama room portfolio (three.js)" />
-  <title>Room Folio</title>
-  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
-  <link rel="apple-touch-icon" href="./assets/favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Room Diorama</title>
+
+  <link rel="icon" href="./assets/favicon/favicon.ico" sizes="any" />
+  <link rel="icon" href="./assets/favicon/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="./assets/favicon/favicon.png" />
+
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <div id="app"></div>
-
-  <div class="ui">
-    <div class="hud">
-      <div class="pill" id="loadingPill">Loading…</div>
-      <div class="pill" id="soundPill" style="display:none">Tap to enable sound</div>
-    </div>
-
-    <div class="menu">
-      <button data-open="#work">MY WORK</button>
-      <button data-open="#about">ABOUT</button>
-      <button data-open="#contact">CONTACT</button>
-    </div>
-
-    <div class="toast">
-      <div class="card">
-        <strong>Tip</strong>
-        <div>Drag to orbit · Scroll to zoom · Click objects (monitor / piano keys / signs)</div>
-      </div>
-    </div>
-
-    <div class="panel" id="panel">
-      <button class="close" id="closePanel">Close</button>
-      <h2 id="panelTitle">Panel</h2>
-      <p id="panelBody"></p>
-    </div>
-
-    <div class="debug" id="debugBox"></div>
+  <div id="app">
+    <canvas id="c"></canvas>
   </div>
 
-  <!-- Pure static + GitHub Pages friendly: use esm.sh so there are NO bare-specifier imports to resolve -->
+  <!-- Intro overlay: minimal (button only) -->
+  <div id="intro" aria-hidden="false">
+    <button id="enterBtn" type="button">
+      Enter
+    </button>
+  </div>
+
   <script type="module" src="./main.js"></script>
 </body>
 </html>

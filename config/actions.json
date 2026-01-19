@@ -1,16 +1,12 @@
 {
-  "default": {"type": "none"},
+  "openInNewTab": true,
   "byName": {
-    "WORK_SIGN": {"type": "hash", "value": "#work"},
-    "ABOUT_SIGN": {"type": "hash", "value": "#about"},
-    "CONTACT_SIGN": {"type": "hash", "value": "#contact"},
+    "My_Work_Button_Third_Raycaster_Pointer_Hover": "#my-work",
+    "About_Button_Third_Raycaster_Pointer_Hover": "#about",
+    "Contact_Button_Third_Raycaster_Pointer_Hover": "#contact",
 
-    "sign_work": {"type": "hash", "value": "#work"},
-    "sign_about": {"type": "hash", "value": "#about"},
-    "sign_contact": {"type": "hash", "value": "#contact"},
-
-    "PC_MONITOR": {"type": "hash", "value": "#work"},
-    "screen": {"type": "hash", "value": "#work"}
-  },
-  "notes": "오브젝트 이름(gltf node.name) 기준으로 링크/모달/해시를 연결합니다. type: hash|url|modal|none"
+    "GitHub_Fourth_Raycaster_Pointer_Hover": "https://github.com/",
+    "Twitter_Fourth_Raycaster_Pointer_Hover": "https://x.com/",
+    "YouTube_Fourth_Raycaster_Pointer_Hover": "https://www.youtube.com/"
+  }
 }

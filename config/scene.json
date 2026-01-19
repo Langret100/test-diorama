@@ -1,23 +1,20 @@
 {
-  "removeCeiling": true,
-  "hoverScale": 1.06,
-  "clickScale": 1.09,
-  "squish": 0.02,
   "camera": {
-    "fov": 38,
-    "position": [2.25, 1.6, 2.75],
-    "target": [0.25, 0.95, 0.0]
+    "fov": 40
   },
   "lighting": {
-    "exposure": 0.82,
-    "hemiIntensity": 0.55,
-    "dirIntensity": 0.95,
-    "fillIntensity": 0.28
+    "exposure": 0.95,
+    "hemiIntensity": 0.9,
+    "dirIntensity": 1.1
+  },
+  "interaction": {
+    "hoverScale": 1.04,
+    "clickScale": 1.07,
+    "squish": 0.05
   },
   "chairSway": {
     "enabled": true,
-    "speed": 0.33,
-    "yaw": 0.075,
-    "x": 0.018
+    "speed": 0.18,
+    "yaw": 0.08
   }
 }
