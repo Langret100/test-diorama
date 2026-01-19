@@ -1,10 +1,12 @@
-import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
-import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';
-import { GLTFLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
-import { DRACOLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/DRACOLoader.js';
-import { EffectComposer } from 'https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/UnrealBloomPass.js';
+// Use esm.sh so *all* dependencies are rewritten to absolute URLs.
+// This avoids "Failed to resolve module specifier 'three'" on GitHub Pages without Node/Vite.
+import * as THREE from 'https://esm.sh/three@0.160.0';
+import { OrbitControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+import { GLTFLoader } from 'https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'https://esm.sh/three@0.160.0/examples/jsm/loaders/DRACOLoader.js';
+import { EffectComposer } from 'https://esm.sh/three@0.160.0/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'https://esm.sh/three@0.160.0/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'https://esm.sh/three@0.160.0/examples/jsm/postprocessing/UnrealBloomPass.js';
 
 const $ = (s) => document.querySelector(s);
 const debugBox = $('#debugBox');
@@ -88,7 +90,7 @@ if (monitorExtra?.images?.length) c.monitor = { ...c.monitor, ...monitorExtra };
 
 const app = document.getElementById('app');
 
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -101,7 +103,7 @@ app.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(new THREE.Color('#efe7fb'), 6.0, 14.0);
 
-// soft gradient-ish background (works everywhere)
+// Background to match pastel UI.
 scene.background = new THREE.Color('#f0ebfa');
 
 const camera = new THREE.PerspectiveCamera(c.camera.fov, window.innerWidth / window.innerHeight, 0.1, 100);
@@ -119,20 +121,32 @@ controls.enablePan = false;
 controls.update();
 
 function focusCameraOn(object3d) {
+  // Robust framing (works regardless of initial camera/target and model placement).
   const box = new THREE.Box3().setFromObject(object3d);
   const center = box.getCenter(new THREE.Vector3());
   const size = box.getSize(new THREE.Vector3());
-  const radius = Math.max(0.001, size.length() * 0.35);
-  // Only retarget if current target is clearly off
-  if (controls.target.distanceTo(center) > 0.35) {
-    const dir = camera.position.clone().sub(controls.target).normalize();
-    controls.target.copy(center);
-    const desired = THREE.MathUtils.clamp(radius * 3.2, 2.2, 6.2);
-    camera.position.copy(center.clone().add(dir.multiplyScalar(desired)));
-    controls.minDistance = Math.max(1.6, desired * 0.55);
-    controls.maxDistance = Math.max(4.6, desired * 1.8);
-    controls.update();
-  }
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const radius = Math.max(0.001, maxDim * 0.55);
+
+  // Place the ground slightly below the model so the shadow catcher doesn't hide it.
+  const minY = box.min.y;
+  ground.position.y = minY - 0.01;
+
+  // Camera distance based on fov.
+  const fov = THREE.MathUtils.degToRad(camera.fov);
+  const dist = radius / Math.tan(fov / 2);
+  const dir = new THREE.Vector3(1, 0.55, 1).normalize();
+  camera.near = Math.max(0.01, dist / 100);
+  camera.far = Math.max(50, dist * 10);
+  camera.updateProjectionMatrix();
+
+  controls.target.copy(center);
+  camera.position.copy(center.clone().add(dir.multiplyScalar(dist * 1.15)));
+  controls.minDistance = Math.max(1.2, dist * 0.45);
+  controls.maxDistance = Math.max(3.8, dist * 1.8);
+  controls.update();
+
+  debug(`(info) frame: size=(${size.x.toFixed(2)},${size.y.toFixed(2)},${size.z.toFixed(2)}) cam=(${camera.position.x.toFixed(2)},${camera.position.y.toFixed(2)},${camera.position.z.toFixed(2)})`);
 }
 
 
@@ -159,11 +173,17 @@ ground.position.y = 0;
 ground.receiveShadow = true;
 scene.add(ground);
 
-// postprocessing (bloom for fairy lights / monitor)
-const composer = new EffectComposer(renderer);
-composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.38, 0.85, 0.72);
-composer.addPass(bloom);
+// postprocessing (optional) — if it fails for any reason, fall back to plain renderer.
+let composer = null;
+try {
+  composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.38, 0.85, 0.72);
+  composer.addPass(bloom);
+} catch (e) {
+  debug(`(warn) postprocessing disabled: ${e?.message ?? e}`);
+  composer = null;
+}
 
 // Loading manager (never get stuck forever)
 const manager = new THREE.LoadingManager();
@@ -240,7 +260,9 @@ function hideCeilingMeshes(obj) {
   const sceneBox = new THREE.Box3().setFromObject(obj);
   const size = new THREE.Vector3();
   sceneBox.getSize(size);
-  const topY = sceneBox.min.y + size.y * 0.82;
+  // Be conservative: only hide meshes that look like a roof/ceiling.
+  // (Over-aggressive heuristics can hide everything and result in a blank scene.)
+  const topY = sceneBox.min.y + size.y * 0.90;
 
   obj.traverse((o) => {
     if (!o.isMesh) return;
@@ -250,10 +272,12 @@ function hideCeilingMeshes(obj) {
     const c = new THREE.Vector3();
     b.getCenter(c);
 
-    const spansMost = (s.x > size.x * 0.65) && (s.z > size.z * 0.65);
-    const isThin = s.y < size.y * 0.18;
+    const n = (o.name || '').toLowerCase();
+    const namedRoof = /(roof|ceiling|lid|top|cover)/.test(n);
+    const spansMost = (s.x > size.x * 0.72) && (s.z > size.z * 0.72);
+    const isThin = s.y < size.y * 0.12;
     const isTop = c.y > topY;
-    if (spansMost && isThin && isTop) o.visible = false;
+    if (namedRoof || (spansMost && isThin && isTop)) o.visible = false;
   });
 }
 
@@ -628,53 +652,60 @@ function animate(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
 
-  controls.update();
+  try {
+    controls.update();
 
-  const hit = pick();
-  const newHover = hit ? findInteractiveRoot(hit.object) : null;
-  if (newHover !== hoveredRoot) {
-    if (hoveredRoot) setTargetScale(hoveredRoot, 1.0);
-    hoveredRoot = newHover;
-    if (hoveredRoot) setTargetScale(hoveredRoot, c.hoverScale);
-  }
-
-  for (const [obj, st] of interactiveRoots.entries()) {
-    const target = st.target;
-    const curr = obj.scale.x;
-    const next = damp(curr, target, 18, dt);
-    const squish = (target > 1) ? c.squish : 0;
-    obj.scale.set(next * (1 + squish), next * (1 - squish), next * (1 + squish));
-  }
-
-  if (chair && c.chairSway?.enabled) {
-    const s = c.chairSway;
-    const t = now * 0.001;
-    chair.rotation.y = (chair.userData.__baseRotY ?? (chair.userData.__baseRotY = chair.rotation.y)) + Math.sin(t * s.speed) * s.yaw;
-    chair.position.x = (chair.userData.__baseX ?? (chair.userData.__baseX = chair.position.x)) + Math.sin(t * (s.speed * 0.7)) * s.x;
-  }
-
-  if (monitor && monitor.textures.length > 0) {
-    slideT += dt * 1000;
-    if (slideFade > 0) {
-      slideFade = Math.max(0, slideFade - dt * 1000);
-      const a = 1 - (slideFade / c.monitor.fadeMs);
-      monitor.matA.opacity = 1 - a;
-      monitor.matB.opacity = a;
+    const hit = pick();
+    const newHover = hit ? findInteractiveRoot(hit.object) : null;
+    if (newHover !== hoveredRoot) {
+      if (hoveredRoot) setTargetScale(hoveredRoot, 1.0);
+      hoveredRoot = newHover;
+      if (hoveredRoot) setTargetScale(hoveredRoot, c.hoverScale);
     }
-    if (slideT > c.monitor.intervalMs) {
-      slideT = 0;
-      slideFade = c.monitor.fadeMs;
-      slideIndex = (slideIndex + 1) % monitor.textures.length;
-      monitor.matA.map = monitor.matB.map;
-      monitor.matB.map = monitor.textures[slideIndex];
-      monitor.matA.needsUpdate = true;
-      monitor.matB.needsUpdate = true;
-      monitor.matA.opacity = 1;
-      monitor.matB.opacity = 0;
-    }
-  }
 
-  composer.render();
+    for (const [obj, st] of interactiveRoots.entries()) {
+      const target = st.target;
+      const curr = obj.scale.x;
+      const next = damp(curr, target, 18, dt);
+      const squish = (target > 1) ? c.squish : 0;
+      obj.scale.set(next * (1 + squish), next * (1 - squish), next * (1 + squish));
+    }
+
+    if (chair && c.chairSway?.enabled) {
+      const s = c.chairSway;
+      const t = now * 0.001;
+      chair.rotation.y = (chair.userData.__baseRotY ?? (chair.userData.__baseRotY = chair.rotation.y)) + Math.sin(t * s.speed) * s.yaw;
+      chair.position.x = (chair.userData.__baseX ?? (chair.userData.__baseX = chair.position.x)) + Math.sin(t * (s.speed * 0.7)) * s.x;
+    }
+
+    if (monitor && monitor.textures.length > 0) {
+      slideT += dt * 1000;
+      if (slideFade > 0) {
+        slideFade = Math.max(0, slideFade - dt * 1000);
+        const a = 1 - (slideFade / c.monitor.fadeMs);
+        monitor.matA.opacity = 1 - a;
+        monitor.matB.opacity = a;
+      }
+      if (slideT > c.monitor.intervalMs) {
+        slideT = 0;
+        slideFade = c.monitor.fadeMs;
+        slideIndex = (slideIndex + 1) % monitor.textures.length;
+        monitor.matA.map = monitor.matB.map;
+        monitor.matB.map = monitor.textures[slideIndex];
+        monitor.matA.needsUpdate = true;
+        monitor.matB.needsUpdate = true;
+        monitor.matA.opacity = 1;
+        monitor.matB.opacity = 0;
+      }
+    }
+
+    if (composer) composer.render();
+    else renderer.render(scene, camera);
+  } catch (e) {
+    debug(`(error) render loop stopped: ${e?.message ?? e}`);
+    // Render at least once without composer so something appears.
+    try { renderer.render(scene, camera); } catch {}
+  }
 }
 requestAnimationFrame(animate);
 
@@ -684,7 +715,7 @@ window.addEventListener('resize', () => {
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h);
-  composer.setSize(w, h);
+  if (composer) composer.setSize(w, h);
 });
 
 // If loading manager never fires (due to some resources outside it), hide pill after init
