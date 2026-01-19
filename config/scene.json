@@ -9,9 +9,10 @@
     "target": [0.25, 0.95, 0.0]
   },
   "lighting": {
-    "exposure": 1.05,
-    "hemiIntensity": 0.9,
-    "dirIntensity": 1.4
+    "exposure": 0.82,
+    "hemiIntensity": 0.55,
+    "dirIntensity": 0.95,
+    "fillIntensity": 0.28
   },
   "chairSway": {
     "enabled": true,

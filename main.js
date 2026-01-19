@@ -23,7 +23,8 @@ const u = (rel) => new URL(rel, import.meta.url).toString();
 const cfg = {
   removeCeiling: true,
   camera: { fov: 42, position: [2.3, 1.55, 2.85], target: [0.25, 0.9, 0.0] },
-  lighting: { exposure: 1.05, hemiIntensity: 0.95, dirIntensity: 1.35 },
+  // Pastel look without clipping: keep lights soft and lean on the CSS gradient background.
+  lighting: { exposure: 0.82, hemiIntensity: 0.55, dirIntensity: 0.95, fillIntensity: 0.28 },
   hoverScale: 1.07,
   clickScale: 1.10,
   squish: 0.04,
@@ -90,22 +91,25 @@ if (monitorExtra?.images?.length) c.monitor = { ...c.monitor, ...monitorExtra };
 
 const app = document.getElementById('app');
 
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+// Use transparent canvas so the CSS pastel gradient shows through (prevents the scene looking "white" overall).
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = c.lighting.exposure;
+renderer.setClearColor(0x000000, 0);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 app.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 // Fog will be re-scaled after framing the model (prevents "white-out" when the GLB uses larger units)
-scene.fog = new THREE.Fog(new THREE.Color('#efe7fb'), 8.0, 18.0);
+// Start with gentle fog; we re-scale it after framing the model.
+scene.fog = new THREE.Fog(new THREE.Color('#efe7fb'), 10.0, 80.0);
 
-// Background to match pastel UI.
-scene.background = new THREE.Color('#f0ebfa');
+// Let the CSS background show through.
+scene.background = null;
 
 const camera = new THREE.PerspectiveCamera(c.camera.fov, window.innerWidth / window.innerHeight, 0.1, 100);
 camera.position.set(...c.camera.position);
@@ -196,8 +200,9 @@ function focusCameraOn(object3d) {
 
   // Re-scale fog to the actual scene scale
   if (scene.fog) {
-    const near = Math.max(2.5, dist * 0.35);
-    const far  = Math.max(12.0, dist * 2.4);
+    // Keep fog subtle: start beyond the core diorama so it doesn't wash out the scene.
+    const near = Math.max(8.0, dist * 1.2);
+    const far  = Math.max(80.0, dist * 6.5);
     scene.fog.near = near;
     scene.fog.far  = far;
   }
@@ -217,7 +222,7 @@ function focusCameraOn(object3d) {
 
 // lighting: pastel, soft
 scene.add(new THREE.HemisphereLight(0xffeffa, 0xbcd9ff, c.lighting.hemiIntensity));
-const dir = new THREE.DirectionalLight(0xffffff, c.lighting.dirIntensity);
+const dir = new THREE.DirectionalLight(0xfffcf4, c.lighting.dirIntensity);
 dir.position.set(3.6, 5.2, 2.4);
 dir.castShadow = true;
 dir.shadow.mapSize.set(2048, 2048);
@@ -227,7 +232,7 @@ dir.shadow.camera.right = 4;
 dir.shadow.camera.top = 4;
 dir.shadow.camera.bottom = -4;
 scene.add(dir);
-const fill = new THREE.DirectionalLight(0xfff2e2, 0.70);
+const fill = new THREE.DirectionalLight(0xfff2e2, c.lighting.fillIntensity ?? 0.28);
 fill.position.set(-4.0, 3.2, 2.5);
 scene.add(fill);
 
@@ -243,7 +248,8 @@ let composer = null;
 try {
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.38, 0.85, 0.72);
+  // Subtle bloom only for emissive highlights (avoid blowing out the whole scene).
+  const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.12, 0.55, 0.90);
   composer.addPass(bloom);
 } catch (e) {
   debug(`(warn) postprocessing disabled: ${e?.message ?? e}`);
