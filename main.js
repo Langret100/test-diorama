@@ -64,6 +64,18 @@ const cfg = {
   interaction: { ...defaults.interaction, ...(sceneCfg.interaction ?? {}) }
 };
 
+// Backward-compat: older scene.json keys
+// - lighting.dirIntensity -> lighting.keyIntensity
+if (sceneCfg?.lighting?.dirIntensity != null && sceneCfg?.lighting?.keyIntensity == null) {
+  cfg.lighting.keyIntensity = sceneCfg.lighting.dirIntensity;
+}
+// - interaction.clickScale + interaction.squish -> clickScaleXZ + clickScaleY
+if (sceneCfg?.interaction?.clickScale != null) {
+  cfg.interaction.clickScaleXZ = sceneCfg.interaction.clickScale;
+  const squish = sceneCfg?.interaction?.squish;
+  if (typeof squish === 'number') cfg.interaction.clickScaleY = Math.max(0.5, 1 - squish);
+}
+
 // ---------- Three setup
 const renderer = new THREE.WebGLRenderer({
   canvas,
@@ -75,14 +87,16 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.setSize(window.innerWidth, window.innerHeight, false);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.0;
+renderer.toneMappingExposure = cfg?.lighting?.exposure ?? 1.0;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(new THREE.Color('#f3effa'), 10, 34);
+// Fog is tuned after the model is framed; initial values are safe defaults.
+scene.fog = new THREE.Fog(new THREE.Color('#f3effa'), 10, 120);
 
-const camera = new THREE.PerspectiveCamera(cfg.camera.fov, window.innerWidth / window.innerHeight, 0.05, 120);
+// Far plane is generous; we tune fog/camera framing after the model loads.
+const camera = new THREE.PerspectiveCamera(cfg.camera.fov, window.innerWidth / window.innerHeight, 0.05, 500);
 
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
@@ -331,24 +345,12 @@ function applyMaterialsAndCollect(obj) {
     const name = o.name || '';
     const lower = name.toLowerCase();
 
-    // Remove Kirby
-    if (lower.includes('kirby')) {
-      o.visible = false;
-      return;
-    }
-
-    // Remove character + window-sill letters/text (minimal window frame)
+    // Hide ONLY the requested window-sill decoration:
+    // - Name_Letter_1..8_Third_Raycaster_Hover
+    // - Name_Platform_Third (the "L" board)
     const shouldHide =
-      lower.includes('kirby') ||
-      lower.includes('sooah') ||
-      lower.includes('sooahkim') ||
-      lower.includes('kim') && lower.includes('name') ||
       lower.startsWith('name_letter_') ||
-      lower.includes('name_platform') ||
-      lower.includes('letter') ||
-      lower.includes('signature') ||
-      lower.includes('logo') ||
-      lower.includes('text');
+      lower.includes('name_platform');
 
     if (shouldHide) {
       o.visible = false;
@@ -463,6 +465,27 @@ function hideCeiling(obj) {
   });
 }
 
+// Some exports come in with a scale (e.g., centimeters) that makes the camera/controls
+// end up *inside* the room. We auto-normalize the scene scale to sit nicely within
+// the configured OrbitControls distance range.
+function normalizeSceneScale(obj) {
+  const box = new THREE.Box3().setFromObject(obj);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const maxDim = Math.max(size.x, size.y, size.z);
+  if (!Number.isFinite(maxDim) || maxDim <= 0) return;
+
+  // Keep the whole diorama comfortably visible within maxDistance.
+  const targetMaxDim = Math.max(6, cfg.controls.maxDistance * 0.65);
+  const ratio = targetMaxDim / maxDim;
+
+  // Only apply when the mismatch is significant (avoid surprising tiny rescaling).
+  if (ratio < 0.4 || ratio > 2.5) {
+    obj.scale.multiplyScalar(ratio);
+    obj.updateWorldMatrix(true, true);
+  }
+}
+
 function frameCamera(obj) {
   const box = new THREE.Box3().setFromObject(obj);
   const center = new THREE.Vector3();
@@ -470,12 +493,28 @@ function frameCamera(obj) {
   box.getCenter(center);
   box.getSize(size);
 
-  const radius = Math.max(size.x, size.y, size.z) * 0.55;
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const radius = maxDim * 0.55;
   controls.target.copy(center).add(new THREE.Vector3(0, radius * 0.12, 0));
 
   camera.position.copy(controls.target).add(new THREE.Vector3(radius * 1.55, radius * 1.05, radius * 1.75));
   camera.lookAt(controls.target);
+
+  // If the scene is larger than the control constraints, expand them so the camera
+  // doesn't get clamped *inside* the room.
+  // Initial camera distance is ~2.56*radius (from the vector above).
+  // Give a little headroom so OrbitControls won't clamp it.
+  const wantMax = Math.max(cfg.controls.maxDistance, radius * 2.8);
+  const wantMin = Math.min(cfg.controls.minDistance, radius * 0.6);
+  controls.maxDistance = wantMax;
+  controls.minDistance = wantMin;
   controls.update();
+
+  // Tune fog to the scene size so it never blankets the entire diorama.
+  scene.fog.near = Math.max(6, maxDim * 0.9);
+  scene.fog.far = Math.max(scene.fog.near + 10, maxDim * 3.4);
+  camera.far = Math.max(camera.far, scene.fog.far * 1.25);
+  camera.updateProjectionMatrix();
 
   // shadow plane below the scene
   shadowPlane.position.y = box.min.y - 0.02;
@@ -484,6 +523,7 @@ function frameCamera(obj) {
 try {
   const gltf = await gltfLoader.loadAsync(u('./assets/models/Room_Portfolio.glb'));
   root = gltf.scene;
+  normalizeSceneScale(root);
   scene.add(root);
 
   applyMaterialsAndCollect(root);
