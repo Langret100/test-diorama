@@ -1,20 +1,27 @@
 {
-  "camera": {
-    "fov": 40
-  },
-  "lighting": {
-    "exposure": 0.95,
-    "hemiIntensity": 0.9,
-    "dirIntensity": 1.1
+  "camera": { "fov": 35 },
+  "controls": {
+    "minDistance": 5,
+    "maxDistance": 45,
+    "minPolarAngle": 0,
+    "maxPolarAngle": 1.5707963267948966,
+    "minAzimuthAngle": 0,
+    "maxAzimuthAngle": 1.5707963267948966
   },
   "interaction": {
     "hoverScale": 1.04,
-    "clickScale": 1.07,
-    "squish": 0.05
+    "clickScaleXZ": 1.06,
+    "clickScaleY": 0.92,
+    "springK": 28,
+    "springD": 18
   },
   "chairSway": {
     "enabled": true,
-    "speed": 0.18,
-    "yaw": 0.08
+    "speed": 0.45,
+    "yaw": 0.05
+  },
+  "overlay": {
+    "baseFadeMs": 900,
+    "extraFadeWhenLoadingMs": 2200
   }
 }
