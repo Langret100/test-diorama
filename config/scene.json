@@ -1,0 +1,22 @@
+{
+  "removeCeiling": true,
+  "hoverScale": 1.08,
+  "clickScale": 1.12,
+  "squish": 0.025,
+  "camera": {
+    "fov": 35,
+    "position": [2.1, 1.55, 2.6],
+    "target": [0.0, 1.1, 0.0]
+  },
+  "lighting": {
+    "exposure": 1.05,
+    "hemiIntensity": 0.65,
+    "dirIntensity": 2.0
+  },
+  "chairSway": {
+    "enabled": true,
+    "speed": 0.18,
+    "yaw": 0.06,
+    "x": 0.03
+  }
+}

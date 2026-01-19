@@ -1,0 +1,11 @@
+{
+  "intervalMs": 3500,
+  "fadeMs": 850,
+  "images": [
+    "./assets/monitor/monitor1.png",
+    "./assets/monitor/monitor2.png",
+    "./assets/monitor/monitor3.png",
+    "./assets/monitor/monitor4.png",
+    "./assets/monitor/monitor5.png"
+  ]
+}
