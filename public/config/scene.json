@@ -1,9 +1,0 @@
-{
-  "removeKirby": true,
-  "removeCeiling": true,
-  "ceilingAutoDetect": {
-    "minCenterY": 8.5,
-    "minXZ": 10.0,
-    "maxYThickness": 1.25
-  }
-}
