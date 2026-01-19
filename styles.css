@@ -1,8 +1,8 @@
 :root{
-  --bg1:#e7dcf3;
-  --bg2:#d7e8f6;
+  --bg1:#eadff7;
+  --bg2:#d9edf8;
   --ink:#2a2330;
-  --panel:rgba(255,255,255,0.72);
+  --panel:rgba(255,255,255,0.74);
   --panel2:rgba(255,255,255,0.58);
   --shadow:0 16px 44px rgba(0,0,0,0.16);
   --radius:18px;
@@ -15,32 +15,14 @@ body{
   color:var(--ink);
   background: radial-gradient(1200px 800px at 20% 20%, var(--bg1), transparent 70%),
               radial-gradient(1200px 800px at 80% 70%, var(--bg2), transparent 70%),
-              linear-gradient(180deg, #f4effa, #e7f2fb);
-}
-@font-face{
-  font-family: MotleyForces;
-  src: url("./assets/fonts/MotleyForces-Regular.woff2") format("woff2"),
-       url("./assets/fonts/MotleyForces-Regular.woff") format("woff");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face{
-  font-family: ShiftyNotes;
-  src: url("./assets/fonts/ShiftyNotes-Regular.woff2") format("woff2"),
-       url("./assets/fonts/ShiftyNotes-Regular.woff") format("woff");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
+              linear-gradient(180deg, #f6f1fb, #eaf5fd);
 }
 #app{position:fixed;inset:0}
 canvas{display:block;width:100%;height:100%}
 
 .ui{position:fixed;inset:0;pointer-events:none}
 .hud{position:absolute;left:18px;top:18px;display:flex;gap:10px;align-items:center}
-.badge{pointer-events:none;padding:8px 10px;border-radius:999px;background:var(--panel2);backdrop-filter: blur(10px);box-shadow: var(--shadow);font-size:12px}
-.progress{width:140px;height:10px;border-radius:999px;background:rgba(0,0,0,0.08);overflow:hidden}
-.progress > div{height:100%;width:0%;background:rgba(42,35,48,0.55)}
+.pill{pointer-events:none;padding:8px 10px;border-radius:999px;background:var(--panel2);backdrop-filter: blur(10px);box-shadow: var(--shadow);font-size:12px}
 
 .menu{position:absolute;left:18px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:10px;pointer-events:auto}
 .menu button{
@@ -51,18 +33,17 @@ canvas{display:block;width:100%;height:100%}
   background: var(--panel);
   backdrop-filter: blur(12px);
   box-shadow: var(--shadow);
-  font-family: MotleyForces, ui-sans-serif, system-ui;
   letter-spacing: 0.02em;
-  font-size: 18px;
+  font-size: 16px;
+  font-weight: 800;
   user-select:none;
   transition: transform .16s ease, background .16s ease;
 }
 .menu button:hover{transform: translateX(4px)}
 .menu button:active{transform: translateX(2px) scale(0.98)}
 
-.toast{position:absolute;right:18px;bottom:18px;max-width: 360px;pointer-events:none}
+.toast{position:absolute;right:18px;bottom:18px;max-width: 380px;pointer-events:none}
 .toast .card{padding:12px 14px;border-radius: var(--radius);background: var(--panel);backdrop-filter: blur(12px);box-shadow: var(--shadow);font-size:13px;line-height:1.35}
-.toast strong{font-family: MotleyForces, ui-sans-serif, system-ui;}
 
 .panel{
   position:absolute;
@@ -79,11 +60,29 @@ canvas{display:block;width:100%;height:100%}
   display:none;
 }
 .panel.show{display:block}
-.panel h2{margin:0 0 10px;font-family: MotleyForces, ui-sans-serif, system-ui;letter-spacing:0.02em}
+.panel h2{margin:0 0 10px;letter-spacing:0.02em}
 .panel p{margin:0 0 12px}
 .panel .close{all:unset;cursor:pointer;float:right;font-size:14px;padding:8px 10px;border-radius:14px;background:rgba(0,0,0,0.06)}
 
+.debug{
+  position:absolute;
+  left:18px;
+  bottom:18px;
+  max-width:min(520px, calc(100vw - 36px));
+  padding:12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 240, 240, 0.75);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow);
+  pointer-events:auto;
+  display:none;
+  font-size:12px;
+  line-height:1.35;
+  white-space:pre-wrap;
+}
+.debug.show{display:block}
+
 @media (max-width: 520px){
-  .menu button{font-size:16px}
+  .menu button{font-size:15px}
   .toast{right:12px;bottom:12px}
 }

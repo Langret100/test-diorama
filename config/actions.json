@@ -4,8 +4,13 @@
     "WORK_SIGN": {"type": "hash", "value": "#work"},
     "ABOUT_SIGN": {"type": "hash", "value": "#about"},
     "CONTACT_SIGN": {"type": "hash", "value": "#contact"},
-    "PC_MONITOR": {"type": "none"},
-    "PIANO": {"type": "none"}
+
+    "sign_work": {"type": "hash", "value": "#work"},
+    "sign_about": {"type": "hash", "value": "#about"},
+    "sign_contact": {"type": "hash", "value": "#contact"},
+
+    "PC_MONITOR": {"type": "hash", "value": "#work"},
+    "screen": {"type": "hash", "value": "#work"}
   },
-  "notes": "오브젝트 이름(three.js에서 glb 노드 name) 기준으로 여기에 링크를 매핑하면 클릭 시 이동합니다. type: hash|url|modal|none"
+  "notes": "오브젝트 이름(gltf node.name) 기준으로 링크/모달/해시를 연결합니다. type: hash|url|modal|none"
 }
