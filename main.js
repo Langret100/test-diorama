@@ -101,7 +101,8 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 app.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(new THREE.Color('#efe7fb'), 6.0, 14.0);
+// Fog will be re-scaled after framing the model (prevents "white-out" when the GLB uses larger units)
+scene.fog = new THREE.Fog(new THREE.Color('#efe7fb'), 8.0, 18.0);
 
 // Background to match pastel UI.
 scene.background = new THREE.Color('#f0ebfa');
@@ -145,6 +146,16 @@ function focusCameraOn(object3d) {
   controls.minDistance = Math.max(1.2, dist * 0.45);
   controls.maxDistance = Math.max(3.8, dist * 1.8);
   controls.update();
+
+  // Re-scale fog to the actual scene scale.
+  if (scene.fog) {
+    // Keep a gentle pastel haze without hiding the whole model when units are large.
+    const near = Math.max(6, dist * 0.35);
+    const far  = Math.max(18, dist * 2.4);
+    scene.fog.near = near;
+    scene.fog.far  = far;
+  }
+
 
   debug(`(info) frame: size=(${size.x.toFixed(2)},${size.y.toFixed(2)},${size.z.toFixed(2)}) cam=(${camera.position.x.toFixed(2)},${camera.position.y.toFixed(2)},${camera.position.z.toFixed(2)})`);
 }
