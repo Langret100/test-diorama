@@ -1,0 +1,11 @@
+{
+  "enabled": true,
+  "intervalMs": 2600,
+  "fadeMs": 650,
+  "images": [
+    "/images/monitor/monitor-01.webp",
+    "/images/monitor/monitor-02.webp",
+    "/images/monitor/monitor-03.webp",
+    "/images/monitor/monitor-04.webp"
+  ]
+}
