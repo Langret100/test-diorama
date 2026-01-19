@@ -1,44 +1,47 @@
 <!doctype html>
 <html lang="ko">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Room Diorama (three.js)</title>
-    <link rel="stylesheet" href="./src/style.css" />
-  </head>
-  <body>
-    <div id="ui">
-      <div class="brand">
-        <div class="dot"></div>
-        <div>
-          <div class="title">Sooah's Room</div>
-          <div class="subtitle">three.js diorama mock</div>
-        </div>
-      </div>
-
-      <nav class="nav">
-        <a href="#work">MY WORK</a>
-        <a href="#about">ABOUT</a>
-        <a href="#contact">CONTACT</a>
-      </nav>
-
-      <div class="hint">
-        드래그: 회전 · 휠: 줌 · 더블클릭: 리셋
-      </div>
-    </div>
-
-    <div id="loading">
-      <div class="card">
-        <div class="spinner"></div>
-        <div>
-          <div class="loading-title">Loading assets…</div>
-          <div class="loading-sub" id="loadingSub">0%</div>
-        </div>
-      </div>
-    </div>
-
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Room Folio Diorama (Three.js)</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="preload" as="image" href="assets/textures/wood_diff_1k.jpg" />
+  <link rel="preload" as="image" href="assets/textures/plaster_diff_1k.jpg" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="app">
     <canvas id="c"></canvas>
 
-    <script type="module" src="./src/main.js"></script>
-  </body>
+    <div id="hud">
+      <div class="pill" id="hint">클릭: 오브젝트 인터랙션 · 피아노: 클릭 또는 키보드(A S D F...) · 드래그: 시점</div>
+      <div class="pill" id="assetStatus" aria-live="polite">Assets: loading…</div>
+    </div>
+
+    <div id="modal" class="hidden" role="dialog" aria-modal="true" aria-label="content">
+      <div class="modal__backdrop"></div>
+      <div class="modal__panel">
+        <button id="modalClose" class="modal__close" aria-label="close">×</button>
+        <h2 id="modalTitle"></h2>
+        <div id="modalBody"></div>
+        <div id="modalFooter" class="modal__footer"></div>
+      </div>
+    </div>
+
+    <main id="sections" class="visually-hidden">
+      <section id="work"><h1>WORK</h1><p>TODO</p></section>
+      <section id="about"><h1>ABOUT</h1><p>TODO</p></section>
+      <section id="contact"><h1>CONTACT</h1><p>TODO</p></section>
+    </main>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
 </html>

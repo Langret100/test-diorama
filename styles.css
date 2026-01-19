@@ -1,0 +1,46 @@
+:root{
+  --bg1:#f2e9ff;
+  --bg2:#e7f1ff;
+  --ink:#2d2a35;
+  --pill: rgba(255,255,255,0.72);
+  --pillBorder: rgba(255,255,255,0.55);
+  --shadow: 0 12px 40px rgba(20,12,34,0.18);
+}
+*{box-sizing:border-box}
+html,body{height:100%; margin:0; font-family: ui-rounded, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans KR", sans-serif; color:var(--ink);
+  background: radial-gradient(1200px 700px at 30% 20%, var(--bg1), transparent 60%),
+              radial-gradient(1000px 700px at 70% 80%, var(--bg2), transparent 60%),
+              linear-gradient(180deg, #f7f2ff, #eaf1ff);
+  overflow:hidden;
+}
+#app{position:relative; height:100%; width:100%;}
+#c{display:block; width:100%; height:100%; outline:none;}
+#hud{position:absolute; top:14px; left:14px; display:flex; flex-direction:column; gap:10px; pointer-events:none;}
+.pill{pointer-events:none; max-width:min(680px, calc(100vw - 28px)); padding:10px 12px; border-radius:999px; background:var(--pill); border:1px solid var(--pillBorder); box-shadow: 0 10px 24px rgba(20,12,34,0.12); backdrop-filter: blur(8px); font-size:13px; line-height:1.25;}
+
+.visually-hidden{position:absolute; width:1px; height:1px; margin:-1px; overflow:hidden; clip:rect(0 0 0 0);}
+
+#modal{position:absolute; inset:0; display:grid; place-items:center; pointer-events:auto;}
+#modal.hidden{display:none;}
+.modal__backdrop{position:absolute; inset:0; background:rgba(18,12,28,0.28); backdrop-filter: blur(8px);}
+.modal__panel{position:relative; width:min(780px, calc(100vw - 44px)); max-height:min(78vh, 760px); overflow:auto;
+  background: rgba(255,255,255,0.92);
+  border:1px solid rgba(255,255,255,0.6);
+  border-radius:22px;
+  box-shadow: var(--shadow);
+  padding:18px 18px 14px;
+}
+.modal__close{position:sticky; float:right; top:10px; right:10px; width:38px; height:38px; border-radius:12px;
+  border:1px solid rgba(0,0,0,0.08); background:rgba(255,255,255,0.9); cursor:pointer;
+  font-size:24px; line-height:34px;
+}
+#modalTitle{margin:4px 0 10px; font-size:20px; letter-spacing:0.2px;}
+#modalBody{font-size:14px; line-height:1.6; opacity:0.9;}
+.modal__footer{margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;}
+.modal__footer a{display:inline-flex; align-items:center; gap:8px; padding:10px 12px; border-radius:14px;
+  background:#f4f0ff; border:1px solid rgba(0,0,0,0.06); text-decoration:none; color:var(--ink);
+}
+.modal__footer a:hover{filter:brightness(0.98)}
+
+/* cursor hint */
+body.is-hovering #c{cursor:pointer;}

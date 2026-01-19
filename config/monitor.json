@@ -1,0 +1,11 @@
+{
+  "images": [
+    "assets/monitor/monitor01.png",
+    "assets/monitor/monitor02.png",
+    "assets/monitor/monitor03.png",
+    "assets/monitor/monitor04.png",
+    "assets/monitor/monitor05.png"
+  ],
+  "secondsPerImage": 3.0,
+  "blendSeconds": 0.65
+}
