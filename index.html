@@ -18,9 +18,14 @@
 
   <!-- Intro overlay: minimal (button only) -->
   <div id="intro" aria-hidden="false">
-    <button id="enterBtn" type="button">
-      Enter
-    </button>
+    <button id="enterBtn" type="button">Enter</button>
+  </div>
+
+  <!-- Minimal modal (opened by 3D objects like ABOUT). Click anywhere to close. -->
+  <div id="modal" class="modal hidden" aria-hidden="true">
+    <div class="modalCard" role="dialog" aria-modal="true">
+      <div id="modalContent" class="modalContent"></div>
+    </div>
   </div>
 
   <script type="module" src="./main.js"></script>

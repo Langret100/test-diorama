@@ -5,9 +5,10 @@ import { DRACOLoader } from 'https://esm.sh/three@0.160.0/examples/jsm/loaders/D
 
 // ---------- DOM
 const canvas = document.getElementById('c');
-const overlay = document.getElementById('introOverlay');
+const overlay = document.getElementById('intro');
 const enterBtn = document.getElementById('enterBtn');
-const enterLabel = document.getElementById('enterLabel');
+const modal = document.getElementById('modal');
+const modalContent = document.getElementById('modalContent');
 const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
 const u = (p) => new URL(p, import.meta.url).toString();
@@ -141,16 +142,7 @@ manager.onLoad = () => {
   loadDone = true;
 };
 
-function setEnterHint() {
-  // Keep button clickable; just make the dots breathe while loading.
-  if (loadDone) {
-    enterLabel.textContent = 'Enter';
-    enterBtn.classList.add('ready');
-  } else {
-    enterLabel.textContent = 'Enter';
-  }
-}
-setInterval(setEnterHint, 250);
+// Keep button always clickable (loading is "hidden" by the overlay illusion).
 
 function easeInOut(t) {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
@@ -345,8 +337,20 @@ function applyMaterialsAndCollect(obj) {
       return;
     }
 
-    // Remove window-sill letters (minimal window frame)
-    if (lower.startsWith('name_letter_') || lower === 'name_platform_third') {
+    // Remove character + window-sill letters/text (minimal window frame)
+    const shouldHide =
+      lower.includes('kirby') ||
+      lower.includes('sooah') ||
+      lower.includes('sooahkim') ||
+      lower.includes('kim') && lower.includes('name') ||
+      lower.startsWith('name_letter_') ||
+      lower.includes('name_platform') ||
+      lower.includes('letter') ||
+      lower.includes('signature') ||
+      lower.includes('logo') ||
+      lower.includes('text');
+
+    if (shouldHide) {
       o.visible = false;
       return;
     }
@@ -488,7 +492,7 @@ try {
 } catch (e) {
   // Fail quietly with a friendly overlay still present.
   console.error(e);
-  enterLabel.textContent = 'Enter';
+  if (enterBtn) enterBtn.textContent = 'Enter';
 }
 
 // ---------- Interactions (hover + click)
@@ -528,9 +532,57 @@ function setPress(mesh, on) {
   }
 }
 
+// ---------- Modal pages (opened by clicking 3D objects)
+const modalPages = {
+  '#about': `
+    <h2>About</h2>
+    <p>Andrew Woan의 작품을 참고/ 활용하였습니다.</p>
+    <p>출처: <a href="https://github.com/andrewwoan/sooahkimsfolio" target="_blank" rel="noopener noreferrer">github.com/andrewwoan/sooahkimsfolio</a></p>
+  `,
+  '#my-work': `
+    <h2>My Work</h2>
+    <p>이 영역은 프로젝트/작업 링크로 채우기 위한 자리입니다.</p>
+  `,
+  '#contact': `
+    <h2>Contact</h2>
+    <p>이 영역은 연락처/소셜 링크로 채우기 위한 자리입니다.</p>
+  `
+};
+
+function openModal(html) {
+  if (!modal || !modalContent) return;
+  modalContent.innerHTML = html;
+  modal.classList.remove('hidden');
+  modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeModal() {
+  if (!modal) return;
+  modal.classList.add('hidden');
+  modal.setAttribute('aria-hidden', 'true');
+}
+
+modal?.addEventListener('click', (ev) => {
+  // allow clicking links without immediately closing
+  if (ev.target?.closest?.('a')) return;
+  closeModal();
+});
+
+window.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape') closeModal();
+});
+
 function openAction(mesh) {
   const url = actions?.byName?.[mesh.name];
   if (!url) return;
+
+  // Internal pages are shown in-modal (no extra buttons on the main UI)
+  if (url.startsWith('#')) {
+    openModal(modalPages[url] ?? `<h2>${url.replace('#','')}</h2><p>Coming soon</p>`);
+    return;
+  }
+
+  // External links
   if (actions.openInNewTab) window.open(url, '_blank', 'noopener,noreferrer');
   else window.location.href = url;
 }
@@ -622,7 +674,9 @@ function tick(now) {
 
   // Chair sway
   if (chairTop && !reduceMotion) {
-    chairTop.rotation.y = Math.sin(now * 0.0007) * 0.08;
+    const sp = cfg?.chairSway?.speed ?? 0.45;
+    const yaw = cfg?.chairSway?.yaw ?? 0.05;
+    chairTop.rotation.y = Math.sin(now * 0.001 * sp) * yaw;
   }
 
   // Springs

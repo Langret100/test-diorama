@@ -45,3 +45,7 @@
 - 색감/조명은 `config/scene.json` 와 `main.js` 상단의 lighting 값으로 더 쉽게 튜닝 가능.
 - 말랑 반응(hover/click)은 `main.js`의 `HOVER_SCALE` / `PRESS_SQUASH` 등 상수로 조절.
 - "WORK/ABOUT/CONTACT" 클릭 시 실제 섹션 UI(모달, 스크롤, 별도 페이지)로 확장 가능.
+
+## Credits
+- Andrew Woan의 작품을 참고/ 활용하였습니다.
+- 출처: https://github.com/andrewwoan/sooahkimsfolio
