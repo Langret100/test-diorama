@@ -3,7 +3,7 @@ import { OrbitControls } from 'https://esm.sh/three@0.160.0/examples/jsm/control
 import { GLTFLoader } from 'https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'https://esm.sh/three@0.160.0/examples/jsm/loaders/DRACOLoader.js';
 import gsap from 'https://esm.sh/gsap@3.12.5';
-import { Howl } from 'https://esm.sh/howler@2.2.4';
+import { Howl, Howler } from 'https://esm.sh/howler@2.2.4';
 
 // ---------- helpers
 const u = (p) => new URL(p, import.meta.url).toString();
@@ -23,8 +23,6 @@ const overlay = document.getElementById('intro');
 const enterBtn = document.getElementById('enterBtn');
 const modal = document.getElementById('modal');
 const modalContent = document.getElementById('modalContent');
-const modalClose = document.getElementById('modalClose');
-const modalBackdrop = document.getElementById('modalBackdrop');
 const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
 
 // ---------- config
@@ -73,57 +71,51 @@ const cfg = {
 
 const actions = actionsCfg ?? { openInNewTab: true, byName: {} };
 
-// ---------- Modal router (ABOUT / WORK / CONTACT)
-// actions.json can map 3D objects to hash pages (#about, #my-work, #contact).
+// ---------- minimal modal (ABOUT / WORK / CONTACT)
+// The original project uses HTML modals driven by GSAP.
+// Our static build keeps a minimal version but MUST expose a safe `openModal()`.
+const modalEl = document.getElementById('modal');
+const modalContentEl = document.getElementById('modalContent');
+
+function closeModal() {
+  if (!modalEl) return;
+  modalEl.classList.add('hidden');
+  modalEl.setAttribute('aria-hidden', 'true');
+}
+
+function openModal(html) {
+  if (!modalEl || !modalContentEl) return;
+  modalContentEl.innerHTML = html;
+  modalEl.classList.remove('hidden');
+  modalEl.setAttribute('aria-hidden', 'false');
+}
+
+// Simple page content for the 3D sign buttons. Replace these later if you want.
 const modalPages = {
-  'my-work': `
+  '#my-work': `
     <h2>My Work</h2>
-    <p>Coming soon. Replace this content in <code>main.js</code> if you want fully custom pages.</p>
+    <p>Coming soon. (Replace this content in <code>main.js</code> or wire a full modal like the original source.)</p>
   `,
-  about: `
+  '#about': `
     <h2>About</h2>
     <p>Coming soon.</p>
   `,
-  contact: `
+  '#contact': `
     <h2>Contact</h2>
     <p>Coming soon.</p>
   `
 };
 
-function closeModal() {
-  if (!modal) return;
-  modal.classList.add('hidden');
-  modal.setAttribute('aria-hidden', 'true');
-}
-
-function openModal(key) {
-  if (!modal || !modalContent) return;
-  modalContent.innerHTML = modalPages[key] ?? `
-    <h2>${key}</h2>
-    <p>Coming soon.</p>
-  `;
-  modal.classList.remove('hidden');
-  modal.setAttribute('aria-hidden', 'false');
-}
-
-modalClose?.addEventListener('click', closeModal, { passive: true });
-modalBackdrop?.addEventListener('click', closeModal, { passive: true });
+// Click/tap anywhere to close (mobile-friendly)
+modalEl?.addEventListener('click', () => closeModal(), { passive: true });
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeModal();
+  if (e.key === 'Escape') { closeModal(); return; }
+  if (e.key === 'Enter' && !enterRequested) {
+    // Allow keyboard-only users to start
+    enterBtn?.click();
+  }
 });
 
-function handleAction(action) {
-  if (!action) return;
-  if (action.startsWith('#')) {
-    openModal(action.slice(1));
-    return;
-  }
-  if (actions.openInNewTab) window.open(action, '_blank', 'noopener,noreferrer');
-  else window.location.href = action;
-}
-
-
-// ---------- core scene
 // ---------- core scene
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#D9CAD1');
@@ -148,19 +140,15 @@ renderer.shadowMap.enabled = false;
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
-controls.dampingFactor = 0.08;
-controls.rotateSpeed = 0.45;
-controls.zoomSpeed = 0.9;
+controls.dampingFactor = 0.05;
 controls.enablePan = false;
-// Keep the camera above the floor and avoid extreme tilts
-controls.minPolarAngle = Math.PI * 0.15;
-controls.maxPolarAngle = Math.PI * 0.55;
-// Do NOT clamp azimuth (causes 'stuck' feeling)
-controls.minAzimuthAngle = -Infinity;
-controls.maxAzimuthAngle = Infinity;
-// Touch gestures: 1 finger rotate, 2 finger pinch-to-zoom
+// Make zoom/rotate feel natural across mouse, trackpads, and touch.
+controls.rotateSpeed = window.innerWidth < 768 ? 0.7 : 0.85;
+controls.zoomSpeed = window.innerWidth < 768 ? 0.85 : 0.95;
+// On desktop, zooming toward the cursor feels more intuitive.
+if ('zoomToCursor' in controls) controls.zoomToCursor = window.innerWidth >= 768;
+// Touch gestures: 1 finger rotate, 2 finger pinch-to-zoom.
 controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
-if ('zoomToCursor' in controls) controls.zoomToCursor = true;
 
 // Prevent the page from scrolling/zooming while interacting with the canvas.
 renderer.domElement.style.touchAction = 'none';
@@ -171,9 +159,12 @@ renderer.domElement.addEventListener(
   },
   { passive: false }
 );
-
 controls.minDistance = cfg.controls.minDistance;
 controls.maxDistance = cfg.controls.maxDistance;
+controls.minPolarAngle = cfg.controls.minPolarAngle;
+controls.maxPolarAngle = cfg.controls.maxPolarAngle;
+controls.minAzimuthAngle = cfg.controls.minAzimuthAngle;
+controls.maxAzimuthAngle = cfg.controls.maxAzimuthAngle;
 
 function setStartCamera() {
   // Values taken from the original implementation (desktop vs mobile)
@@ -240,50 +231,84 @@ function overlayAlpha(now) {
   return Math.max(0, Math.min(1, 1 - t));
 }
 
-// ---------- audio (simple synth)
-// ---------- Audio (Howler)
-// (Assets copied from source.zip into ./assets/audio/...)
+// ---------- audio (Howler: sampled piano + bgm)
+let audioUnlocked = false;
+
 const bgm = new Howl({
-  src: [u('./assets/audio/music/cosmic_candy.ogg')],
+  src: ['assets/audio/music/cosmic_candy.ogg'],
   loop: true,
-  volume: 0.6
+  volume: 0.6,
+  preload: true
 });
+
 const clickSfx = new Howl({
-  src: [u('./assets/audio/sfx/click/bubble.ogg')],
-  volume: 0.85
+  src: ['assets/audio/sfx/click/bubble.ogg'],
+  volume: 0.5,
+  preload: true
 });
+
 const pianoSamples = Array.from({ length: 24 }, (_, i) =>
-  new Howl({ src: [u(`./assets/audio/sfx/piano/Key_${i + 1}.ogg`)], volume: 0.9 })
+  new Howl({ src: [`assets/audio/sfx/piano/Key_${i + 1}.ogg`], volume: 0.9, preload: true })
 );
 
-function playPiano(idx) {
+const pianoKeyMap = {
+  C1_Key: 'Key_24',
+  'C#1_Key': 'Key_23',
+  D1_Key: 'Key_22',
+  'D#1_Key': 'Key_21',
+  E1_Key: 'Key_20',
+  F1_Key: 'Key_19',
+  'F#1_Key': 'Key_18',
+  G1_Key: 'Key_17',
+  'G#1_Key': 'Key_16',
+  A1_Key: 'Key_15',
+  'A#1_Key': 'Key_14',
+  B1_Key: 'Key_13',
+  C2_Key: 'Key_12',
+  'C#2_Key': 'Key_11',
+  D2_Key: 'Key_10',
+  'D#2_Key': 'Key_9',
+  E2_Key: 'Key_8',
+  F2_Key: 'Key_7',
+  'F#2_Key': 'Key_6',
+  G2_Key: 'Key_5',
+  'G#2_Key': 'Key_4',
+  A2_Key: 'Key_3',
+  'A#2_Key': 'Key_2',
+  B2_Key: 'Key_1'
+};
+
+function unlockAudio() {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+  try { Howler.autoUnlock = true; } catch {}
+  try { Howler.ctx?.resume?.(); } catch {}
+}
+
+
+function playPianoByKeyName(keyName) {
+  const soundKey = pianoKeyMap[keyName];
+  if (!soundKey) return;
+  const n = parseInt(soundKey.split('_')[1], 10);
+  if (!Number.isFinite(n)) return;
+  const idx = Math.max(0, Math.min(23, n - 1));
   const s = pianoSamples[idx];
   if (!s) return;
   s.stop();
   s.play();
 }
 
-let audioUnlocked = false;
-function unlockAudio() {
-  if (audioUnlocked) return;
-  audioUnlocked = true;
-  bgm.play();
-}
-
-// We only need a user gesture to unlock audio; the Enter button click qualifies.
+// ---------- media (dynamic images)
 enterBtn?.addEventListener('click', () => {
   if (enterRequested) return;
   enterRequested = true;
   enterStart = performance.now();
   unlockAudio();
+  // Autoplay policies: start music only after a user gesture (Enter).
+  try { bgm.play(); } catch {}
 });
 
-// Fallback: if Enter was triggered some other way, the first pointerdown unlocks audio.
-window.addEventListener('pointerdown', () => {
-  if (enterRequested) unlockAudio();
-}, { once: true, passive: true });
-
-// ---------- Theme shader// ---------- Theme shader (ported from the original source, but without manual gamma)
+// ---------- Theme shader (ported from the original source, but without manual gamma)
 const themeVertexShader = `
 varying vec2 vUv;
 void main(){
@@ -485,8 +510,7 @@ let frame1Mesh = null;
 let frame2Mesh = null;
 let frame3Mesh = null;
 let posterMesh = null;
-const pianoCandidates = [];
-const pianoKeyIndex = new Map();
+const pianoKeyNameByMesh = new Map();
 
 // ---------- Raycaster / interaction shared state
 // Declared early so model traversal can register hitboxes.
@@ -508,13 +532,16 @@ function applyMaterialsAndCollect(obj) {
 
     const name = o.name || '';
     const lower = name.toLowerCase();
-    // Hide ONLY what was requested (avoid broad matches):
-    const letterRe = /^Name_Letter_[1-8]_Third(?:_Raycaster_Hover)?$/;
-    const isLetter = letterRe.test(name);
-    const isLBoard = name === 'Name_Platform_Third';
-    const isKirby = /\bKirby\b/i.test(name);
+    // Hide ONLY what was requested:
+    // - Alphabet models on the window frame (Name_Letter_1..8)
+    // - The board with an 'L' (Name_Platform_Third)
+    // Include their hover/raycaster variants if present.
+    const isLetter = /^name_letter_[1-8](?:$|_)/i.test(name);
+    const isLetterRay = /^name_letter_[1-8].*(raycaster|hover)/i.test(lower);
+    const isLBoard = lower === 'name_platform_third' || lower.includes('name_platform_third');
+    const isKirby = lower.includes('kirby');
 
-    if (isLetter || isLBoard || isKirby) {
+    if (isLetter || isLetterRay || isLBoard || isKirby) {
       o.visible = false;
       return;
     }
@@ -547,17 +574,23 @@ function applyMaterialsAndCollect(obj) {
     if (name.startsWith('Frame_3_') && !frame3Mesh) frame3Mesh = o;
 
     // Register interactive objects (sample-style: raycaster + invisible hitbox)
+    // Skip removed items so they don't leave invisible hitboxes behind.
+    if (name.includes('Raycaster') && (name.includes('Kirby') || name.includes('Name_Platform'))) {
+      o.visible = false;
+      return;
+    }
     if (name.includes('Raycaster') && o.visible !== false) {
       // Some GLBs author intro-animated objects at scale 0. Force a usable base scale
       // so buttons/labels don't disappear.
       if (o.scale.x === 0 || o.scale.y === 0 || o.scale.z === 0) o.scale.set(1, 1, 1);
       registerInteractive(o);
     }
-
-    // Piano mapping: collect key meshes and assign samples later
-    const k = name.match(/^([A-G])(#?)(\d)_Key_/);
-    if (k) pianoCandidates.push(o);
-
+    // Piano key mapping (sample-based)
+    const km = name.match(/^([A-G])(#?)([12])_Key/);
+    if (km) {
+      const keyName = `${km[1]}${km[2] ? '#' : ''}${km[3]}_Key`;
+      pianoKeyNameByMesh.set(o, keyName);
+    }
   });
 }
 
@@ -580,9 +613,10 @@ function addRotator(mesh, textures, { opacity = 1.0, intervalMs = 4000 } = {}) {
 }
 
 function findPosterCandidate(sceneRoot) {
-  // The poster mesh in this model is not named (it's a generic Plane.*). We pick the best "thin vertical" mesh.
+  // The poster in this GLB is often a generic Plane.*.
+  // We pick the best thin vertical mesh near the window wall.
   let best = null;
-  let bestArea = -1;
+  let bestScore = -1;
   const size = new THREE.Vector3();
   const center = new THREE.Vector3();
   const box = new THREE.Box3();
@@ -592,7 +626,7 @@ function findPosterCandidate(sceneRoot) {
     const n = (o.name || '').toLowerCase();
     // Skip known meshes/surfaces
     if (n.includes('screen') || n.includes('frame_') || n.includes('water') || n.includes('glass') || n.includes('bubble')) return;
-    if (n.includes('name_letter') || n.includes('name_platform')) return;
+    if (n.includes('name_letter') || n.includes('name_platform') || n.includes('kirby')) return;
 
     box.setFromObject(o);
     box.getSize(size);
@@ -604,14 +638,21 @@ function findPosterCandidate(sceneRoot) {
     const h = dims[2];
     const area = w * h;
 
-    // Poster heuristics: thin, medium area, above the floor, and taller than wide
-    if (thickness > 0.08) return;
-    if (area < 0.25 || area > 1.6) return;
-    if (center.y < 2.0) return;
-    if (h / Math.max(w, 1e-6) < 1.2) return;
+    // Poster heuristics: thin, vertical, on the wall near the window
+    if (thickness > 0.20) return;
+    if (area < 0.08 || area > 3.0) return;
+    if (center.y < 1.6) return;
+    if (center.z > -2.8 || center.z < -5.6) return;
+    if (h / Math.max(w, 1e-6) < 1.05) return;
 
-    if (area > bestArea) {
-      bestArea = area;
+    // Prefer the right-side wall region (window side)
+    let score = area;
+    if (center.x >= 1.6 && center.x <= 3.4) score += 0.75;
+    score += (0.20 - thickness) * 2.0;
+    score += (h / Math.max(w, 1e-6)) * 0.2;
+
+    if (score > bestScore) {
+      bestScore = score;
       best = o;
     }
   });
@@ -646,36 +687,65 @@ function updateRotators(nowMs) {
   }
 }
 
-// ---------- Window-frame decoration removal (blue 'D')
-// The decoration is unnamed; we detect it by UVs on the Third texture set and location near the window.
-function hideWindowFrameBlueD(rootScene) {
+// ---------- Window-frame decoration removal
+// The 'square decoration on the window frame' is unnamed in this GLB, so we pick a candidate by
+// bounding-box heuristics near the window/letters region and hide it.
+// ---------- Window-frame decoration removal
+// Remove small square/plaques sitting on the LOWER window sill (unnamed in this GLB).
+function hideLowerWindowSillDecos(rootScene) {
   if (!rootScene) return;
-  const D_U = [0.834, 0.934];
-  const D_V = [0.782, 0.878];
-  const M = 0.004;
+  const box = new THREE.Box3();
+  const size = new THREE.Vector3();
+  const center = new THREE.Vector3();
 
-  function uvHitsD(geom) {
-    const uv = geom?.attributes?.uv;
-    if (!uv) return false;
-    for (let i = 0; i < uv.count; i++) {
-      const u0 = uv.getX(i);
-      const v0 = uv.getY(i);
-      if (u0 > D_U[0] - M && u0 < D_U[1] + M && v0 > D_V[0] - M && v0 < D_V[1] + M) return true;
-    }
-    return false;
-  }
+  let hidden = 0;
 
-  const p = new THREE.Vector3();
   rootScene.traverse((o) => {
     if (!o.isMesh || !o.visible) return;
-    const mats = Array.isArray(o.material) ? o.material : [o.material];
-    if (!mats.includes(roomMaterials.Third)) return;
-    if (!uvHitsD(o.geometry)) return;
-    o.getWorldPosition(p);
-    // The window/letter cluster sits around z ~ -4.2 in this model.
-    const nearWindow = p.z < -3.4 && p.z > -5.2 && p.y > 2.6 && p.y < 4.8;
-    if (!nearWindow) return;
+    const lower = (o.name || '').toLowerCase();
+
+    // Skip known surfaces
+    if (lower.includes('screen') || lower.includes('frame_') || lower.includes('glass') || lower.includes('water')) return;
+    if (lower.includes('kirby') || lower.includes('name_letter') || lower.includes('name_platform')) return;
+
+    box.setFromObject(o);
+    box.getSize(size);
+    box.getCenter(center);
+
+    const vol = size.x * size.y * size.z;
+    if (vol < 1e-6 || vol > 0.18) return;
+
+    // Window cluster z ~ -4.2. Lower sill is a bit lower than the letters.
+    if (center.z > -3.5 || center.z < -5.3) return;
+    if (center.y < 1.75 || center.y > 3.35) return;
+
+    const dims = [size.x, size.y, size.z].sort((a, b) => a - b);
+    const thickness = dims[0];
+    const mid = dims[1];
+    const maxdim = dims[2];
+
+    // Plaque-like: thin, small, and roughly square-ish
+    if (thickness > 0.18) return;
+    if (maxdim < 0.08 || maxdim > 0.75) return;
+    const ratio = maxdim / Math.max(mid, 1e-6);
+    if (ratio > 1.6) return;
+
+    // Slightly favor right side (window side), but don't require it
+    if (center.x < 0.2 || center.x > 3.8) return;
+
     o.visible = false;
+    hidden++;
+  });
+
+  if (hidden) console.info('[auto-hide] lower window sill deco count:', hidden);
+}
+
+function hideKirbyAndNamePlatform(rootScene) {
+  if (!rootScene) return;
+  rootScene.traverse((o) => {
+    const name = o.name || '';
+    if (name.includes('Kirby')) o.visible = false;
+    if (name.includes('Name_Platform')) o.visible = false;
   });
 }
 
@@ -685,40 +755,22 @@ try {
   root = gltf.scene;
   scene.add(root);
   applyMaterialsAndCollect(root);
-  hideWindowFrameBlueD(root);
+  hideKirbyAndNamePlatform(root);
+  hideLowerWindowSillDecos(root);
   initDynamicSurfaces(root);
-
-  // Fit controls to scene bounds (prevents zoom/rotate clamping bugs)
-  const bounds = new THREE.Box3().setFromObject(root);
-  const size = bounds.getSize(new THREE.Vector3()).length();
-  const center = bounds.getCenter(new THREE.Vector3());
-  controls.target.copy(center);
-  controls.minDistance = Math.max(1, size / 25);
-  controls.maxDistance = Math.max(controls.minDistance + 1, size / 2);
-  camera.near = size / 100;
-  camera.far = size * 2;
-  camera.updateProjectionMatrix();
+  // Re-apply the intended starting view after the GLB is decoded/added.
+  setStartCamera();
   controls.update();
-
-  // Piano sample mapping (left-to-right)
-  const uniq = Array.from(new Set(pianoCandidates));
-  const tmp = new THREE.Vector3();
-  uniq.sort((a, b) => a.getWorldPosition(tmp).x - b.getWorldPosition(new THREE.Vector3()).x);
-  uniq.slice(0, 24).forEach((o, idx) => pianoKeyIndex.set(o, idx));
-  if (pianoKeyIndex.size && pianoKeyIndex.size !== 24) {
-    console.warn('[piano] expected 24 keys, got', pianoKeyIndex.size);
-  }
 } catch (e) {
   console.error(e);
   if (enterBtn) enterBtn.textContent = 'Enter';
 }
 
 // ---------- Interactions (hover + click)
-// Match the original behavior: raycaster hits an *invisible hitbox* and we animate the visible mesh.
-// (Shared state is declared above, before model loading.)
+// Raycaster hits *invisible hitboxes*; we animate the visible mesh.
 
 function shouldUseOriginalMesh(name='') {
-  return ['Bulb', 'Cactus', 'Kirby'].some((k) => name.includes(k));
+  return ['Bulb', 'Cactus'].some((k) => name.includes(k));
 }
 
 function stashInitialTransforms(obj) {
@@ -727,8 +779,12 @@ function stashInitialTransforms(obj) {
   if (!obj.userData.initialRotation) obj.userData.initialRotation = obj.rotation.clone();
 }
 
+function isPianoKey(obj) {
+  return !!obj && pianoKeyNameByMesh.has(obj);
+}
+
 function createStaticHitbox(originalObject) {
-  // Use the original mesh itself for some tiny objects (matches sample behavior)
+  // Use the original mesh itself for some tiny objects (matches sample feel)
   if (shouldUseOriginalMesh(originalObject.name || '')) {
     stashInitialTransforms(originalObject);
     return originalObject;
@@ -736,19 +792,17 @@ function createStaticHitbox(originalObject) {
 
   stashInitialTransforms(originalObject);
 
-  // Ensure bbox calc works even if scale was authored as zero
-  const curScale = originalObject.scale.clone();
-  const hasZeroScale = curScale.x === 0 || curScale.y === 0 || curScale.z === 0;
-  if (hasZeroScale) originalObject.scale.set(1, 1, 1);
-
+  // Compute bounding box once and freeze the hitbox there
   const box = new THREE.Box3().setFromObject(originalObject);
-  const size = box.getSize(new THREE.Vector3());
-  const center = box.getCenter(new THREE.Vector3());
+  const size = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  box.getSize(size);
+  box.getCenter(center);
 
-  if (hasZeroScale) originalObject.scale.copy(curScale);
+  // If the bounding box is degenerate (rare), just use the object
+  if (size.lengthSq() < 1e-10) return originalObject;
 
-  // Slightly generous hitbox so hovering feels forgiving
-  const sizeMultiplier = { x: 1.1, y: 1.75, z: 1.1 };
+  const sizeMultiplier = { x: 1.1, y: 1.7, z: 1.1 };
   const geom = new THREE.BoxGeometry(
     Math.max(0.001, size.x * sizeMultiplier.x),
     Math.max(0.001, size.y * sizeMultiplier.y),
@@ -758,7 +812,7 @@ function createStaticHitbox(originalObject) {
   const mat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, visible: false });
   const hitbox = new THREE.Mesh(geom, mat);
   hitbox.position.copy(center);
-  hitbox.name = (originalObject.name || 'Object') + '_Hitbox';
+  hitbox.name = originalObject.name || 'Object';
   hitbox.userData.originalObject = originalObject;
 
   // Special-case: headphones are rotated in the model so a rotated hitbox feels better
@@ -777,12 +831,27 @@ function registerInteractive(originalObject) {
   interactiveObjects.add(originalObject);
 }
 
+// Pointer + raycast state
+const pointer = new THREE.Vector2();
+const raycaster = new THREE.Raycaster();
+let currentIntersects = [];
+
+let currentHoveredHitbox = null;
+let currentHoveredObject = null;
+let pressedHitbox = null;
+let pressedObject = null;
+
+let pointerIsDown = false;
+let dragMoved = false;
+let downX = 0;
+let downY = 0;
+
 function updateCursor() {
   if (!enterRequested) {
     document.body.style.cursor = 'default';
     return;
   }
-  if (isDragging) {
+  if (pointerIsDown && dragMoved) {
     document.body.style.cursor = 'grabbing';
     return;
   }
@@ -802,82 +871,225 @@ function computeIntersects() {
   currentIntersects = raycaster.intersectObjects(raycasterObjects, false);
 }
 
-// ----- hover / press animation (GSAP)
-function tweenScale(mesh, factor, { duration = 0.12, ease = 'power2.out' } = {}) {
-  if (!mesh) return;
-  stashInitialTransforms(mesh);
-  const base = mesh.userData.initialScale;
-  gsap.killTweensOf(mesh.scale);
-  gsap.to(mesh.scale, {
-    x: base.x * factor,
-    y: base.y * factor,
-    z: base.z * factor,
-    duration,
-    ease
-  });
+function pickHitbox() {
+  computeIntersects();
+  return currentIntersects.length ? currentIntersects[0].object : null;
 }
 
-function setHovered(mesh, on) {
-  if (!mesh) return;
-  tweenScale(mesh, on ? 1.06 : 1.0);
+function objectFromHitbox(hitbox) {
+  if (!hitbox) return null;
+  return hitboxToObjectMap.get(hitbox) || hitbox.userData.originalObject || null;
 }
 
-function setPressed(mesh, on) {
-  if (!mesh) return;
-  if (pianoKeyIndex.has(mesh)) return; // piano keys are rotate-only
-  if (!on) {
-    // release to hover or base
-    const isHover = mesh === currentHoveredObject;
-    tweenScale(mesh, isHover ? 1.06 : 1.0, { duration: 0.14 });
+function getHoverScale(obj) {
+  const name = obj?.name || '';
+  if (name.includes('Fish')) return 1.2;
+  return cfg.interaction.hoverScale;
+}
+
+function hoverIn(obj) {
+  if (!obj) return;
+  stashInitialTransforms(obj);
+
+  // Piano keys: subtle tilt instead of scale.
+  if (isPianoKey(obj)) {
+    gsap.killTweensOf(obj.rotation);
+    gsap.to(obj.rotation, {
+      x: obj.userData.initialRotation.x - Math.PI / 64,
+      duration: 0.12,
+      ease: 'power2.out'
+    });
     return;
   }
-  stashInitialTransforms(mesh);
-  const base = mesh.userData.initialScale;
-  gsap.killTweensOf(mesh.scale);
-  gsap.to(mesh.scale, {
-    x: base.x * 1.06,
-    z: base.z * 1.06,
-    y: base.y * 0.92,
-    duration: 0.08,
-    ease: 'power2.out'
+
+  const base = obj.userData.initialScale;
+  const s = getHoverScale(obj);
+  const target = base.clone().multiplyScalar(s);
+
+  gsap.killTweensOf(obj.scale);
+  gsap.to(obj.scale, {
+    x: target.x,
+    y: target.y,
+    z: target.z,
+    duration: 0.22,
+    ease: 'back.out(2)'
+  });
+
+  // Rotation/position accents (soft)
+  const name = obj.name || '';
+  let rotX = obj.userData.initialRotation.x;
+  let posY = obj.userData.initialPosition.y;
+
+  if (name.includes('About_Button')) {
+    rotX -= Math.PI / 10;
+  } else if (
+    name.includes('Contact_Button') ||
+    name.includes('My_Work_Button') ||
+    name.includes('GitHub') ||
+    name.includes('YouTube') ||
+    name.includes('Twitter')
+  ) {
+    rotX += Math.PI / 10;
+  }
+
+  if (name.includes('Boba') || name.includes('Name_Letter')) {
+    posY += 0.2;
+  }
+
+  gsap.killTweensOf(obj.rotation);
+  gsap.to(obj.rotation, { x: rotX, duration: 0.24, ease: 'back.out(2)' });
+
+  gsap.killTweensOf(obj.position);
+  gsap.to(obj.position, { y: posY, duration: 0.24, ease: 'back.out(2)' });
+}
+
+function hoverOut(obj) {
+  if (!obj) return;
+  stashInitialTransforms(obj);
+
+  if (isPianoKey(obj)) {
+    gsap.killTweensOf(obj.rotation);
+    gsap.to(obj.rotation, {
+      x: obj.userData.initialRotation.x,
+      duration: 0.12,
+      ease: 'power2.out'
+    });
+    return;
+  }
+
+  const base = obj.userData.initialScale;
+  gsap.killTweensOf(obj.scale);
+  gsap.to(obj.scale, {
+    x: base.x,
+    y: base.y,
+    z: base.z,
+    duration: 0.22,
+    ease: 'back.out(2)'
+  });
+
+  gsap.killTweensOf(obj.rotation);
+  gsap.to(obj.rotation, { x: obj.userData.initialRotation.x, duration: 0.22, ease: 'power3.out' });
+
+  gsap.killTweensOf(obj.position);
+  gsap.to(obj.position, { y: obj.userData.initialPosition.y, duration: 0.22, ease: 'power3.out' });
+}
+
+function pressDown(obj) {
+  if (!obj) return;
+  stashInitialTransforms(obj);
+
+  if (isPianoKey(obj)) {
+    // Piano plays on press for snappy feel
+    const keyName = pianoKeyNameByMesh.get(obj);
+    if (keyName) {
+      unlockAudio();
+      playPianoByKeyName(keyName);
+    }
+
+    gsap.killTweensOf(obj.rotation);
+    gsap.to(obj.rotation, {
+      x: obj.userData.initialRotation.x + Math.PI / 42,
+      duration: 0.08,
+      ease: 'back.out(1.6)'
+    });
+    return;
+  }
+
+  const base = obj.userData.initialScale;
+  const t = base.clone();
+  t.x *= cfg.interaction.clickScaleXZ;
+  t.z *= cfg.interaction.clickScaleXZ;
+  t.y *= cfg.interaction.clickScaleY;
+
+  gsap.killTweensOf(obj.scale);
+  gsap.to(obj.scale, {
+    x: t.x,
+    y: t.y,
+    z: t.z,
+    duration: 0.10,
+    ease: 'back.out(1.4)'
   });
 }
 
-function pressKey(keyMesh) {
-  stashInitialTransforms(keyMesh);
-  gsap.killTweensOf(keyMesh.rotation);
-  gsap.to(keyMesh.rotation, {
-    x: keyMesh.userData.initialRotation.x + Math.PI / 42,
-    duration: 0.06,
-    yoyo: true,
-    repeat: 1,
-    ease: 'power1.out'
+function pressUp(obj) {
+  if (!obj) return;
+  stashInitialTransforms(obj);
+
+  if (isPianoKey(obj)) {
+    gsap.killTweensOf(obj.rotation);
+    gsap.to(obj.rotation, {
+      x: obj.userData.initialRotation.x,
+      duration: 0.14,
+      ease: 'power2.out'
+    });
+    return;
+  }
+
+  // Return to hovered scale if still hovered; otherwise base
+  const base = obj.userData.initialScale;
+  const s = obj === currentHoveredObject ? getHoverScale(obj) : 1.0;
+  const target = base.clone().multiplyScalar(s);
+
+  gsap.killTweensOf(obj.scale);
+  gsap.to(obj.scale, {
+    x: target.x,
+    y: target.y,
+    z: target.z,
+    duration: 0.22,
+    ease: 'back.out(2)'
   });
 }
 
-// ----- click/open actions
+function setHoveredFromRaycast() {
+  if (!enterRequested) return;
+
+  computeIntersects();
+  const hitbox = currentIntersects.length ? currentIntersects[0].object : null;
+  const obj = hitbox ? objectFromHitbox(hitbox) : null;
+
+  if (hitbox !== currentHoveredHitbox) {
+    if (currentHoveredObject) hoverOut(currentHoveredObject);
+    currentHoveredHitbox = hitbox;
+    currentHoveredObject = obj;
+    if (currentHoveredObject) hoverIn(currentHoveredObject);
+    updateCursor();
+  }
+}
+
 // ----- click/open actions
 function openActionFromObject(object) {
   if (!object) return;
-  const action = actions?.byName?.[object.name];
-  handleAction(action);
+  const url = actions?.byName?.[object.name];
+  if (!url) return;
+
+  if (url.startsWith('#')) {
+    openModal(modalPages[url] ?? `<h2>${url.replace('#','')}</h2><p>Coming soon</p>`);
+    return;
+  }
+
+  if (actions.openInNewTab) window.open(url, '_blank', 'noopener,noreferrer');
+  else window.location.href = url;
 }
 
 function handleClickOnObject(object) {
   if (!object) return;
 
-    // Piano keys: play sample + rotate only (no scale squash)
-  if (pianoKeyIndex.has(object)) {
-    playPiano(pianoKeyIndex.get(object));
-    pressKey(object);
+  // Piano: some browsers may ignore audio on pointerdown in certain cases;
+  // also trigger on click to be safe.
+  if (isPianoKey(object)) {
+    const keyName = pianoKeyNameByMesh.get(object);
+    if (keyName) {
+      unlockAudio();
+      playPianoByKeyName(keyName);
+    }
     return;
   }
 
-  // Click sfx for other interactives
-  clickSfx?.play?.();
-
-  handleAction(actions?.byName?.[object.name]);
+  // Non-piano: soft click feedback sound
+  try { clickSfx.play(); } catch {}
+  openActionFromObject(object);
 }
+
 
 // Pointer events
 canvas.addEventListener('pointermove', (ev) => {
@@ -885,51 +1097,54 @@ canvas.addEventListener('pointermove', (ev) => {
   pointer.x = ((ev.clientX - r.left) / r.width) * 2 - 1;
   pointer.y = -(((ev.clientY - r.top) / r.height) * 2 - 1);
 
-  if (!enterRequested) return;
-  computeIntersects();
-  const hitbox = currentIntersects.length ? currentIntersects[0].object : null;
-  const obj = hitbox ? (hitboxToObjectMap.get(hitbox) || hitbox.userData.originalObject || null) : null;
-
-  if (hitbox !== currentHoveredHitbox) {
-    if (currentHoveredObject) setHovered(currentHoveredObject, false);
-    currentHoveredHitbox = hitbox;
-    currentHoveredObject = obj;
-    if (currentHoveredObject) setHovered(currentHoveredObject, true);
+  if (pointerIsDown) {
+    const dx = ev.clientX - downX;
+    const dy = ev.clientY - downY;
+    if (!dragMoved && (dx * dx + dy * dy) > 36) dragMoved = true;
     updateCursor();
   }
 });
 
 canvas.addEventListener('pointerdown', (ev) => {
   if (!enterRequested) return;
-  isDragging = true;
-  updateCursor();
+
+  pointerIsDown = true;
+  dragMoved = false;
+  downX = ev.clientX;
+  downY = ev.clientY;
 
   const hitbox = pickHitbox();
-  if (!hitbox) return;
-  const obj = hitboxToObjectMap.get(hitbox) || hitbox.userData.originalObject || null;
-  if (!obj) return;
+  const obj = objectFromHitbox(hitbox);
 
   pressedHitbox = hitbox;
   pressedObject = obj;
-  setPressed(obj, true);
 
-  // prevent the first drag frame from rotating the camera when a button is pressed
-  ev.stopPropagation?.();
+  if (obj) {
+    pressDown(obj);
+    // prevent the first drag frame from rotating the camera when an object is pressed
+    ev.stopPropagation?.();
+  }
+
+  updateCursor();
 });
 
 canvas.addEventListener('pointerup', (ev) => {
-  isDragging = false;
+  if (!enterRequested) return;
+
+  pointerIsDown = false;
   updateCursor();
 
-  if (!pressedHitbox || !pressedObject) return;
+  if (pressedObject) {
+    pressUp(pressedObject);
+  }
 
-  const hitbox = pickHitbox();
-  const obj = hitbox ? (hitboxToObjectMap.get(hitbox) || hitbox.userData.originalObject) : null;
-
-  setPressed(pressedObject, false);
-
-  if (obj === pressedObject) {
-    handleClickOnObject(pressedObject);
+  // Treat as click only if we didn't drag
+  if (!dragMoved && pressedHitbox && pressedObject) {
+    const hitboxNow = pickHitbox();
+    const objNow = objectFromHitbox(hitboxNow);
+    if (objNow === pressedObject) {
+      handleClickOnObject(pressedObject);
+    }
   }
 
   pressedHitbox = null;
@@ -938,12 +1153,17 @@ canvas.addEventListener('pointerup', (ev) => {
 });
 
 canvas.addEventListener('pointerleave', () => {
-  isDragging = false;
+  pointerIsDown = false;
+  dragMoved = false;
+
   if (pressedObject) {
-    setPressed(pressedObject, false);
-    pressedObject = null;
-    pressedHitbox = null;
+    pressUp(pressedObject);
   }
+
+  pressedHitbox = null;
+  pressedObject = null;
+
+  if (currentHoveredObject) hoverOut(currentHoveredObject);
   currentHoveredHitbox = null;
   currentHoveredObject = null;
   updateCursor();
@@ -954,7 +1174,7 @@ canvas.addEventListener('click', (ev) => {
   if (!ev.altKey) return;
   const hitbox = pickHitbox();
   if (!hitbox) return;
-  const obj = hitboxToObjectMap.get(hitbox) || hitbox.userData.originalObject || hitbox;
+  const obj = objectFromHitbox(hitbox) || hitbox;
   try {
     const box = new THREE.Box3().setFromObject(obj);
     const size = box.getSize(new THREE.Vector3());
@@ -974,6 +1194,9 @@ function tick(now) {
   overlay.style.opacity = String(a);
   overlay.style.pointerEvents = a < 0.02 ? 'none' : 'auto';
   if (a < 0.01) overlay.classList.add('hidden');
+
+  // Hover detection (keeps hover correct even while orbiting)
+  setHoveredFromRaycast();
 
   // Dynamic surfaces (monitor / frames / poster)
   updateRotators(now);

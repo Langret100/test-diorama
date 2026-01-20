@@ -72,49 +72,29 @@ body{
 .modal{
   position:fixed;
   inset:0;
-  z-index:50;
-}
-/*
-  NOTE:
-  The project already uses the class name "hidden" for the intro overlay fade.
-  We must NOT define a global `.hidden { display:none; }` or it would break
-  the intro transition. Instead, only hide the modal when it's marked hidden.
-*/
-.modal.hidden,
-.modal[aria-hidden="true"]{
-  display:none;
-}
-.modal-backdrop{
-  position:absolute;
-  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding: 24px;
   background: rgba(255, 232, 246, 0.45);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
+  opacity: 1;
+  transition: opacity 240ms cubic-bezier(0.22, 1, 0.36, 1);
 }
-.modal-panel{
-  position:relative;
+
+.modal.hidden{
+  opacity:0;
+  pointer-events:none;
+}
+
+.modalCard{
   max-width: 520px;
-  width: calc(100% - 48px);
-  margin: 7vh auto;
+  width: 100%;
   border-radius: 22px;
   background: rgba(255,255,255,0.82);
   box-shadow: 0 18px 60px rgba(35, 20, 58, 0.18);
   padding: 18px 18px;
-}
-.modal-close{
-  -webkit-tap-highlight-color: transparent;
-  appearance:none;
-  border:0;
-  position:absolute;
-  right: 14px;
-  top: 12px;
-  width: 34px;
-  height: 34px;
-  border-radius: 999px;
-  cursor:pointer;
-  font-weight: 800;
-  background: rgba(255,255,255,0.9);
-  box-shadow: 0 6px 20px rgba(35, 20, 58, 0.12);
 }
 
 .modalContent{

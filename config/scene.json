@@ -3,22 +3,20 @@
   "controls": {
     "minDistance": 5,
     "maxDistance": 45,
-    "minPolarAngle": 0,
-    "maxPolarAngle": 1.5707963267948966,
-    "minAzimuthAngle": 0,
-    "maxAzimuthAngle": 1.5707963267948966
+    "minPolarAngle": 0.47123889803846897,
+    "maxPolarAngle": 1.7278759594743862,
+    "minAzimuthAngle": -3.141592653589793,
+    "maxAzimuthAngle": 3.141592653589793
   },
   "interaction": {
-    "hoverScale": 1.4,
+    "hoverScale": 1.06,
     "clickScaleXZ": 1.06,
-    "clickScaleY": 0.92,
-    "springK": 28,
-    "springD": 18
+    "clickScaleY": 0.94
   },
   "chairSway": {
     "enabled": true,
-    "speed": 0.5,
-    "yaw": 0.39269908169872414
+    "speed": 0.45,
+    "yaw": 0.05
   },
   "overlay": {
     "baseFadeMs": 900,
