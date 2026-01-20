@@ -214,24 +214,10 @@ function playTone(freq, duration = 0.55) {
   o2.stop(t0 + duration + 0.02);
 }
 
-// ---------- media (video texture)
-const videoElement = document.createElement('video');
-videoElement.src = u('./assets/textures/video/Screen.mp4');
-videoElement.loop = true;
-videoElement.muted = true;
-videoElement.playsInline = true;
-videoElement.preload = 'auto';
-
-const videoTexture = new THREE.VideoTexture(videoElement);
-videoTexture.colorSpace = THREE.SRGBColorSpace;
-videoTexture.flipY = false;
-
+// ---------- media (dynamic images)
+// We only need a user gesture to unlock audio (piano). Monitor uses rotating images.
 function unlockMedia() {
   unlockAudio();
-  // Autoplay policy: start video on user gesture.
-  videoElement.play().catch(() => {
-    // ignore
-  });
 }
 
 enterBtn?.addEventListener('click', () => {
@@ -382,18 +368,52 @@ const glassMaterial = new THREE.MeshPhysicalMaterial({
 
 const whiteMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
 
-// Pointer hitboxes should not render, but should remain raycastable.
-const hitboxMaterial = new THREE.MeshBasicMaterial({
-  transparent: true,
-  opacity: 0,
-  visible: false
-});
+// ---------- Dynamic images (monitor / frames / poster)
+const dynamicTexturePaths = {
+  monitor: [
+    u('./assets/monitor/monitor1.png'),
+    u('./assets/monitor/monitor2.png'),
+    u('./assets/monitor/monitor3.png')
+  ],
+  frames: [
+    u('./assets/dynamic/frame_1.png'),
+    u('./assets/dynamic/frame_2.png'),
+    u('./assets/dynamic/frame_3.png')
+  ],
+  posters: [
+    u('./assets/dynamic/poster_1.png'),
+    u('./assets/dynamic/poster_2.png'),
+    u('./assets/dynamic/poster_3.png')
+  ]
+};
 
-const screenMaterial = new THREE.MeshBasicMaterial({
-  map: videoTexture,
-  transparent: true,
-  opacity: 0.92
-});
+function loadDynamicTextures(paths) {
+  return paths.map((p) => {
+    const t = texLoader.load(p);
+    t.flipY = false;
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.minFilter = THREE.LinearFilter;
+    t.magFilter = THREE.LinearFilter;
+    return t;
+  });
+}
+
+const dynamicTextures = {
+  monitor: loadDynamicTextures(dynamicTexturePaths.monitor),
+  frames: loadDynamicTextures(dynamicTexturePaths.frames),
+  posters: loadDynamicTextures(dynamicTexturePaths.posters)
+};
+
+function makeDynamicMaterial(map, { opacity = 1.0 } = {}) {
+  return new THREE.MeshBasicMaterial({
+    map,
+    transparent: opacity < 1.0,
+    opacity,
+    toneMapped: false
+  });
+}
+
+const screenMaterial = makeDynamicMaterial(dynamicTextures.monitor[0], { opacity: 0.92 });
 
 // ---------- Load model
 const gltfLoader = new GLTFLoader(manager);
@@ -404,8 +424,26 @@ draco.setDecoderConfig?.({ type: 'js' });
 gltfLoader.setDRACOLoader(draco);
 
 let chairTop = null;
-const pickables = [];
+let screenMesh = null;
+let frame1Mesh = null;
+let frame2Mesh = null;
+let frame3Mesh = null;
+let posterMesh = null;
 const piano = new Map();
+
+// ---------- Raycaster / interaction shared state
+// Declared early so model traversal can register hitboxes.
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2(999, 999);
+const raycasterObjects = [];
+const hitboxToObjectMap = new Map();
+const interactiveObjects = new Set();
+let currentIntersects = [];
+let currentHoveredHitbox = null;
+let currentHoveredObject = null;
+let pressedHitbox = null;
+let pressedObject = null;
+let isDragging = false;
 
 function applyMaterialsAndCollect(obj) {
   obj.traverse((o) => {
@@ -420,18 +458,14 @@ function applyMaterialsAndCollect(obj) {
     const isLetter = /^name_letter_[1-8](?:$|_)/i.test(name);
     const isLetterRay = /^name_letter_[1-8].*(raycaster|hover)/i.test(lower);
     const isLBoard = lower === 'name_platform_third' || lower.includes('name_platform_third');
+    const isKirby = lower.includes('kirby');
 
-    if (isLetter || isLetterRay || isLBoard) {
+    if (isLetter || isLetterRay || isLBoard || isKirby) {
       o.visible = false;
       return;
     }
 
-
-    // Hitboxes (Pointer_* / *_Raycaster_Pointer_*) should never be rendered.
-    const isPointerHitbox = /pointer_raycaster|raycaster_pointer/i.test(name);
-    if (isPointerHitbox) {
-      o.material = hitboxMaterial;
-    } else if (lower.includes('water')) {
+    if (lower.includes('water')) {
       o.material = waterMaterial;
     } else if (lower.includes('glass')) {
       o.material = glassMaterial;
@@ -439,6 +473,7 @@ function applyMaterialsAndCollect(obj) {
       o.material = whiteMaterial;
     } else if (lower === 'screen' || lower.endsWith('_screen')) {
       o.material = screenMaterial;
+      if (!screenMesh) screenMesh = o;
     } else if (name.includes('First')) {
       o.material = roomMaterials.First;
     } else if (name.includes('Second')) {
@@ -451,20 +486,18 @@ function applyMaterialsAndCollect(obj) {
 
     if (!chairTop && lower.includes('chair_top')) chairTop = o;
 
-    // Pickables (keep interaction behavior working; pointer hitboxes are used for picking)
-    const pick =
-      lower.includes('button_') ||
-      lower.includes('github_') ||
-      lower.includes('twitter_') ||
-      lower.includes('youtube_') ||
-      lower.includes('_key_pointer_') ||
-      lower.includes('pointer_raycaster') ||
-      lower.includes('raycaster_pointer') ||
-      lower === 'screen';
+    // Surface refs for dynamic textures
+    if ((lower === 'screen' || lower.endsWith('_screen')) && !screenMesh) screenMesh = o;
+    if (name.startsWith('Frame_1_') && !frame1Mesh) frame1Mesh = o;
+    if (name.startsWith('Frame_2_') && !frame2Mesh) frame2Mesh = o;
+    if (name.startsWith('Frame_3_') && !frame3Mesh) frame3Mesh = o;
 
-    if (pick && o.visible !== false) {
-      pickables.push(o);
-      o.userData.__interactive = true;
+    // Register interactive objects (sample-style: raycaster + invisible hitbox)
+    if (name.includes('Raycaster') && o.visible !== false) {
+      // Some GLBs author intro-animated objects at scale 0. Force a usable base scale
+      // so buttons/labels don't disappear.
+      if (o.scale.x === 0 || o.scale.y === 0 || o.scale.z === 0) o.scale.set(1, 1, 1);
+      registerInteractive(o);
     }
 
     // Piano mapping (works with *_Key_Pointer_Raycaster_Third names)
@@ -482,122 +515,329 @@ function applyMaterialsAndCollect(obj) {
   });
 }
 
+
+// ---------- Dynamic surface setup (monitor / frames / poster)
+const rotators = [];
+
+function pickRandomIndex(len, avoid = -1) {
+  if (len <= 1) return 0;
+  let i = Math.floor(Math.random() * len);
+  if (i === avoid) i = (i + 1) % len;
+  return i;
+}
+
+function addRotator(mesh, textures, { opacity = 1.0, intervalMs = 4000 } = {}) {
+  if (!mesh || !textures || !textures.length) return;
+  const initial = pickRandomIndex(textures.length);
+  mesh.material = makeDynamicMaterial(textures[initial], { opacity });
+  rotators.push({ mesh, textures, idx: initial, nextMs: performance.now() + intervalMs, intervalMs });
+}
+
+function findPosterCandidate(sceneRoot) {
+  // The poster mesh in this model is not named (it's a generic Plane.*). We pick the best "thin vertical" mesh.
+  let best = null;
+  let bestArea = -1;
+  const size = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  const box = new THREE.Box3();
+
+  sceneRoot.traverse((o) => {
+    if (!o.isMesh || !o.geometry) return;
+    const n = (o.name || '').toLowerCase();
+    // Skip known meshes/surfaces
+    if (n.includes('screen') || n.includes('frame_') || n.includes('water') || n.includes('glass') || n.includes('bubble')) return;
+    if (n.includes('name_letter') || n.includes('name_platform')) return;
+
+    box.setFromObject(o);
+    box.getSize(size);
+    box.getCenter(center);
+
+    const dims = [size.x, size.y, size.z].sort((a, b) => a - b);
+    const thickness = dims[0];
+    const w = dims[1];
+    const h = dims[2];
+    const area = w * h;
+
+    // Poster heuristics: thin, medium area, above the floor, and taller than wide
+    if (thickness > 0.08) return;
+    if (area < 0.25 || area > 1.6) return;
+    if (center.y < 2.0) return;
+    if (h / Math.max(w, 1e-6) < 1.2) return;
+
+    if (area > bestArea) {
+      bestArea = area;
+      best = o;
+    }
+  });
+
+  return best;
+}
+
+function initDynamicSurfaces(rootScene) {
+  // Monitor
+  addRotator(screenMesh, dynamicTextures.monitor, { opacity: 0.92, intervalMs: 4000 });
+
+  // Frames (if found)
+  addRotator(frame1Mesh, dynamicTextures.frames, { opacity: 1.0, intervalMs: 4000 });
+  addRotator(frame2Mesh, dynamicTextures.frames, { opacity: 1.0, intervalMs: 4000 });
+  addRotator(frame3Mesh, dynamicTextures.frames, { opacity: 1.0, intervalMs: 4000 });
+
+  // Poster (auto-detected)
+  if (!posterMesh && rootScene) posterMesh = findPosterCandidate(rootScene);
+  addRotator(posterMesh, dynamicTextures.posters, { opacity: 1.0, intervalMs: 4000 });
+}
+
+function updateRotators(nowMs) {
+  // Run only after Enter (keeps scene deterministic before the user interacts)
+  if (!enterRequested) return;
+  for (const r of rotators) {
+    if (nowMs < r.nextMs) continue;
+    const nextIdx = pickRandomIndex(r.textures.length, r.idx);
+    r.idx = nextIdx;
+    r.mesh.material.map = r.textures[nextIdx];
+    r.mesh.material.needsUpdate = true;
+    r.nextMs = nowMs + r.intervalMs;
+  }
+}
+
+// ---------- Window-frame decoration removal
+// The 'square decoration on the window frame' is unnamed in this GLB, so we pick a candidate by
+// bounding-box heuristics near the window/letters region and hide it.
+let windowFrameDeco = null;
+function hideWindowFrameDeco(rootScene) {
+  if (!rootScene) return;
+  const box = new THREE.Box3();
+  const size = new THREE.Vector3();
+  const center = new THREE.Vector3();
+
+  let best = null;
+  let bestScore = -1;
+
+  rootScene.traverse((o) => {
+    if (!o.isMesh || !o.visible) return;
+    const name = o.name || '';
+    const lower = name.toLowerCase();
+
+    // Skip known surfaces
+    if (lower.includes('screen') || lower.includes('frame_') || lower.includes('glass') || lower.includes('water')) return;
+    if (lower.includes('kirby') || lower.includes('name_letter') || lower.includes('name_platform')) return;
+
+    box.setFromObject(o);
+    box.getSize(size);
+    box.getCenter(center);
+
+    const vol = size.x * size.y * size.z;
+    if (vol < 1e-6 || vol > 0.25) return;
+
+    // Window/letter cluster sits around z ~ -4.2 in this model.
+    if (center.z > -3.4) return;
+    if (center.z < -5.2) return;
+    if (center.y < 2.6 || center.y > 4.8) return;
+
+    const dims = [size.x, size.y, size.z].sort((a, b) => a - b);
+    const thickness = dims[0];
+    const maxdim = dims[2];
+    if (thickness > 0.12) return;
+    if (maxdim < 0.12 || maxdim > 1.4) return;
+
+    // Prefer things closest to the letters area and very 'plaque-like' (thin)
+    const score = (0.12 - thickness) * 6 + (-center.z) * 0.5 + center.y * 0.2 + maxdim * 0.2 - vol;
+    if (score > bestScore) {
+      bestScore = score;
+      best = o;
+    }
+  });
+
+  if (best) {
+    windowFrameDeco = best;
+    best.visible = false;
+    console.info('[auto-hide] window-frame deco:', best.name || '<unnamed>', best.uuid);
+  }
+}
+
 let root = null;
 try {
   const gltf = await gltfLoader.loadAsync(u('./assets/models/Room_Portfolio.glb'));
   root = gltf.scene;
   scene.add(root);
   applyMaterialsAndCollect(root);
+  hideWindowFrameDeco(root);
+  initDynamicSurfaces(root);
 } catch (e) {
   console.error(e);
   if (enterBtn) enterBtn.textContent = 'Enter';
 }
 
 // ---------- Interactions (hover + click)
-const raycaster = new THREE.Raycaster();
-const pointer = new THREE.Vector2(999, 999);
-let hovered = null;
-let pressed = null;
+// Match the original behavior: raycaster hits an *invisible hitbox* and we animate the visible mesh.
+// (Shared state is declared above, before model loading.)
 
-function pick() {
-  if (!pickables.length) return null;
+function shouldUseOriginalMesh(name='') {
+  return ['Bulb', 'Cactus', 'Kirby'].some((k) => name.includes(k));
+}
+
+function stashInitialTransforms(obj) {
+  if (!obj.userData.initialScale) obj.userData.initialScale = obj.scale.clone();
+  if (!obj.userData.initialPosition) obj.userData.initialPosition = obj.position.clone();
+  if (!obj.userData.initialRotation) obj.userData.initialRotation = obj.rotation.clone();
+}
+
+function createStaticHitbox(originalObject) {
+  // Use the original mesh itself for some tiny objects (matches sample behavior)
+  if (shouldUseOriginalMesh(originalObject.name || '')) {
+    stashInitialTransforms(originalObject);
+    return originalObject;
+  }
+
+  stashInitialTransforms(originalObject);
+
+  // Ensure bbox calc works even if scale was authored as zero
+  const curScale = originalObject.scale.clone();
+  const hasZeroScale = curScale.x === 0 || curScale.y === 0 || curScale.z === 0;
+  if (hasZeroScale) originalObject.scale.set(1, 1, 1);
+
+  const box = new THREE.Box3().setFromObject(originalObject);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+
+  if (hasZeroScale) originalObject.scale.copy(curScale);
+
+  // Slightly generous hitbox so hovering feels forgiving
+  const sizeMultiplier = { x: 1.1, y: 1.75, z: 1.1 };
+  const geom = new THREE.BoxGeometry(
+    Math.max(0.001, size.x * sizeMultiplier.x),
+    Math.max(0.001, size.y * sizeMultiplier.y),
+    Math.max(0.001, size.z * sizeMultiplier.z)
+  );
+
+  const mat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, visible: false });
+  const hitbox = new THREE.Mesh(geom, mat);
+  hitbox.position.copy(center);
+  hitbox.name = (originalObject.name || 'Object') + '_Hitbox';
+  hitbox.userData.originalObject = originalObject;
+
+  // Special-case: headphones are rotated in the model so a rotated hitbox feels better
+  if ((originalObject.name || '').includes('Headphones')) {
+    hitbox.rotation.y = Math.PI / 4;
+  }
+
+  return hitbox;
+}
+
+function registerInteractive(originalObject) {
+  const hitbox = createStaticHitbox(originalObject);
+  if (hitbox !== originalObject) scene.add(hitbox);
+  raycasterObjects.push(hitbox);
+  hitboxToObjectMap.set(hitbox, originalObject);
+  interactiveObjects.add(originalObject);
+}
+
+function updateCursor() {
+  if (!enterRequested) {
+    document.body.style.cursor = 'default';
+    return;
+  }
+  if (isDragging) {
+    document.body.style.cursor = 'grabbing';
+    return;
+  }
+  if (currentHoveredHitbox) {
+    document.body.style.cursor = 'pointer';
+    return;
+  }
+  document.body.style.cursor = 'default';
+}
+
+function computeIntersects() {
+  if (!raycasterObjects.length) {
+    currentIntersects = [];
+    return;
+  }
   raycaster.setFromCamera(pointer, camera);
-  const hits = raycaster.intersectObjects(pickables, false);
-  return hits.length ? hits[0].object : null;
+  currentIntersects = raycaster.intersectObjects(raycasterObjects, false);
 }
 
-const springs = new Map(); // mesh -> spring state
-
-function setBaseScale(o) {
-  if (!o.userData.__baseScale) o.userData.__baseScale = o.scale.clone();
-}
+// ----- hover / press animation targets
+const springs = new Map(); // object -> spring state
 
 function makeSpring(mesh) {
-  setBaseScale(mesh);
-  const base = mesh.userData.__baseScale;
-  return {
-    mesh,
-    base,
-    target: base.clone(),
-    current: base.clone(),
-    vel: new THREE.Vector3(0, 0, 0)
-  };
+  stashInitialTransforms(mesh);
+  const base = mesh.userData.initialScale.clone();
+  return { mesh, base, target: base.clone(), current: mesh.scale.clone(), vel: new THREE.Vector3() };
 }
 
-function setTarget(mesh, vec3) {
+function setScaleTarget(mesh, target) {
   let s = springs.get(mesh);
   if (!s) {
     s = makeSpring(mesh);
     springs.set(mesh, s);
   }
-  s.target.copy(vec3);
+  s.target.copy(target);
 }
 
-function baseScale(mesh) {
-  setBaseScale(mesh);
-  return mesh.userData.__baseScale;
-}
+function setHoverState(object, isHovering) {
+  if (!object) return;
+  stashInitialTransforms(object);
 
-function setHover(mesh, on) {
-  const b = baseScale(mesh);
-  const s = on ? cfg.interaction.hoverScale : 1.0;
-  setTarget(mesh, b.clone().multiplyScalar(s));
-}
+  let scale = 1.4;
+  const name = object.name || '';
 
-function setPress(mesh, on) {
-  const b = baseScale(mesh);
-  if (on) {
-    const t = b.clone();
-    t.x *= cfg.interaction.clickScaleXZ;
-    t.z *= cfg.interaction.clickScaleXZ;
-    t.y *= cfg.interaction.clickScaleY;
-    setTarget(mesh, t);
-  } else {
-    setTarget(mesh, b.clone());
+  if (name.includes('Fish')) scale = 1.2;
+
+  const base = object.userData.initialScale;
+  const tgt = base.clone().multiplyScalar(isHovering ? scale : 1.0);
+  setScaleTarget(object, tgt);
+
+  // Rotation + position accents (as in sample)
+  object.userData._hoverRotXTarget = object.userData.initialRotation.x;
+  object.userData._hoverPosYTarget = object.userData.initialPosition.y;
+
+  if (isHovering) {
+    if (name.includes('About_Button')) {
+      object.userData._hoverRotXTarget = object.userData.initialRotation.x - Math.PI / 10;
+    } else if (
+      name.includes('Contact_Button') ||
+      name.includes('My_Work_Button') ||
+      name.includes('GitHub') ||
+      name.includes('YouTube') ||
+      name.includes('Twitter')
+    ) {
+      object.userData._hoverRotXTarget = object.userData.initialRotation.x + Math.PI / 10;
+    }
+
+    if (name.includes('Boba') || name.includes('Name_Letter')) {
+      object.userData._hoverPosYTarget = object.userData.initialPosition.y + 0.2;
+    }
   }
 }
 
-// ---------- Modal pages (opened by clicking 3D objects)
-const modalPages = {
-  '#about': `
-    <h2>About</h2>
-    <p>Andrew Woan의 작품을 참고/ 활용하였습니다.</p>
-    <p>출처: <a href="https://github.com/andrewwoan/sooahkimsfolio" target="_blank" rel="noopener noreferrer">github.com/andrewwoan/sooahkimsfolio</a></p>
-  `,
-  '#my-work': `
-    <h2>My Work</h2>
-    <p>이 영역은 프로젝트/작업 링크로 채우기 위한 자리입니다.</p>
-  `,
-  '#contact': `
-    <h2>Contact</h2>
-    <p>이 영역은 연락처/소셜 링크로 채우기 위한 자리입니다.</p>
-  `
-};
-
-function openModal(html) {
-  if (!modal || !modalContent) return;
-  modalContent.innerHTML = html;
-  modal.classList.remove('hidden');
-  modal.setAttribute('aria-hidden', 'false');
+function setPressState(object, isPressing) {
+  if (!object) return;
+  stashInitialTransforms(object);
+  const base = object.userData.initialScale;
+  if (isPressing) {
+    const t = base.clone();
+    t.x *= cfg.interaction.clickScaleXZ;
+    t.z *= cfg.interaction.clickScaleXZ;
+    t.y *= cfg.interaction.clickScaleY;
+    setScaleTarget(object, t);
+  } else {
+    // return to hover target if hovered, else base
+    const on = object === currentHoveredObject;
+    const scale = on ? 1.4 : 1.0;
+    setScaleTarget(object, base.clone().multiplyScalar(scale));
+  }
 }
 
-function closeModal() {
-  if (!modal) return;
-  modal.classList.add('hidden');
-  modal.setAttribute('aria-hidden', 'true');
+function pickHitbox() {
+  computeIntersects();
+  return currentIntersects.length ? currentIntersects[0].object : null;
 }
 
-modal?.addEventListener('click', (ev) => {
-  if (ev.target?.closest?.('a')) return;
-  closeModal();
-});
-
-window.addEventListener('keydown', (ev) => {
-  if (ev.key === 'Escape') closeModal();
-});
-
-function openAction(mesh) {
-  const url = actions?.byName?.[mesh.name];
+// ----- click/open actions
+function openActionFromObject(object) {
+  if (!object) return;
+  const url = actions?.byName?.[object.name];
   if (!url) return;
 
   if (url.startsWith('#')) {
@@ -609,28 +849,90 @@ function openAction(mesh) {
   else window.location.href = url;
 }
 
+function handleClickOnObject(object) {
+  if (!object) return;
+
+  // Piano: play tone and do a quick key-press tilt
+  if (piano.has(object)) {
+    playTone(piano.get(object), 0.55);
+    stashInitialTransforms(object);
+    object.rotation.x = object.userData.initialRotation.x + Math.PI / 42;
+    // snap back via target
+    object.userData._keyReturnAt = performance.now() + 220;
+  }
+
+  openActionFromObject(object);
+}
+
+// Pointer events
 canvas.addEventListener('pointermove', (ev) => {
   const r = canvas.getBoundingClientRect();
   pointer.x = ((ev.clientX - r.left) / r.width) * 2 - 1;
   pointer.y = -(((ev.clientY - r.top) / r.height) * 2 - 1);
 });
 
-canvas.addEventListener('pointerdown', () => {
+canvas.addEventListener('pointerdown', (ev) => {
   if (!enterRequested) return;
-  const hit = pick();
-  if (!hit) return;
-  pressed = hit;
-  setPress(hit, true);
+  isDragging = true;
+  updateCursor();
 
-  if (piano.has(hit)) playTone(piano.get(hit), 0.55);
+  const hitbox = pickHitbox();
+  if (!hitbox) return;
+  const obj = hitboxToObjectMap.get(hitbox) || hitbox.userData.originalObject || null;
+  if (!obj) return;
+
+  pressedHitbox = hitbox;
+  pressedObject = obj;
+  setPressState(obj, true);
+
+  // prevent the first drag frame from rotating the camera when a button is pressed
+  ev.stopPropagation?.();
 });
 
-canvas.addEventListener('pointerup', () => {
-  if (!pressed) return;
-  const hit = pick();
-  setPress(pressed, false);
-  if (hit === pressed) openAction(pressed);
-  pressed = null;
+canvas.addEventListener('pointerup', (ev) => {
+  isDragging = false;
+  updateCursor();
+
+  if (!pressedHitbox || !pressedObject) return;
+
+  const hitbox = pickHitbox();
+  const obj = hitbox ? (hitboxToObjectMap.get(hitbox) || hitbox.userData.originalObject) : null;
+
+  setPressState(pressedObject, false);
+
+  if (obj === pressedObject) {
+    handleClickOnObject(pressedObject);
+  }
+
+  pressedHitbox = null;
+  pressedObject = null;
+  ev.stopPropagation?.();
+});
+
+canvas.addEventListener('pointerleave', () => {
+  isDragging = false;
+  if (pressedObject) {
+    setPressState(pressedObject, false);
+    pressedObject = null;
+    pressedHitbox = null;
+  }
+  currentHoveredHitbox = null;
+  currentHoveredObject = null;
+  updateCursor();
+});
+
+// Simple debug helper: Alt+Click prints mesh name + bbox for the hovered object
+canvas.addEventListener('click', (ev) => {
+  if (!ev.altKey) return;
+  const hitbox = pickHitbox();
+  if (!hitbox) return;
+  const obj = hitboxToObjectMap.get(hitbox) || hitbox.userData.originalObject || hitbox;
+  try {
+    const box = new THREE.Box3().setFromObject(obj);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    console.info('[ALT+Click] object:', obj.name, { size: size.toArray(), center: center.toArray() });
+  } catch {}
 });
 
 // ---------- Animation loop
@@ -645,20 +947,53 @@ function tick(now) {
   overlay.style.pointerEvents = a < 0.02 ? 'none' : 'auto';
   if (a < 0.01) overlay.classList.add('hidden');
 
-  // Hover
-  const hit = enterRequested ? pick() : null;
-  if (hit !== hovered) {
-    if (hovered) setHover(hovered, false);
-    hovered = hit;
-    if (hovered) setHover(hovered, true);
-    canvas.style.cursor = hovered ? 'pointer' : 'grab';
+  // Raycaster hover (hitbox -> visible mesh)
+  if (enterRequested) {
+    computeIntersects();
+    const hitbox = currentIntersects.length ? currentIntersects[0].object : null;
+    const obj = hitbox ? (hitboxToObjectMap.get(hitbox) || hitbox.userData.originalObject || null) : null;
+
+    if (hitbox !== currentHoveredHitbox) {
+      if (currentHoveredObject) setHoverState(currentHoveredObject, false);
+      currentHoveredHitbox = hitbox;
+      currentHoveredObject = obj;
+      if (currentHoveredObject) setHoverState(currentHoveredObject, true);
+      updateCursor();
+    }
+
+    // Dampen rotation/position toward hover targets (sample-like)
+    if (!reduceMotion) {
+      for (const o of interactiveObjects) {
+        if (!o || !o.userData) continue;
+        if (!o.userData.initialRotation || !o.userData.initialPosition) stashInitialTransforms(o);
+        const targetRotX = o.userData._hoverRotXTarget ?? o.userData.initialRotation.x;
+        const targetPosY = o.userData._hoverPosYTarget ?? o.userData.initialPosition.y;
+        o.rotation.x = THREE.MathUtils.damp(o.rotation.x, targetRotX, 12, dt);
+        o.position.y = THREE.MathUtils.damp(o.position.y, targetPosY, 12, dt);
+
+        if (o.userData._keyReturnAt && now >= o.userData._keyReturnAt) {
+          o.rotation.x = THREE.MathUtils.damp(o.rotation.x, o.userData.initialRotation.x, 18, dt);
+          if (Math.abs(o.rotation.x - o.userData.initialRotation.x) < 5e-4) delete o.userData._keyReturnAt;
+        }
+      }
+    }
   }
 
-  // Chair sway
+  // Dynamic surfaces (monitor / frames / poster)
+  updateRotators(now);
+
+  // Chair rotate animation (sample behavior)
   if (chairTop && cfg.chairSway.enabled && !reduceMotion) {
-    const sp = cfg.chairSway.speed;
-    const yaw = cfg.chairSway.yaw;
-    chairTop.rotation.y = Math.sin(now * 0.001 * sp) * yaw;
+    stashInitialTransforms(chairTop);
+    const time = now * 0.001;
+    const baseAmplitude = Math.PI / 8;
+
+    const rotationOffset =
+      baseAmplitude *
+      Math.sin(time * 0.5) *
+      (1 - Math.abs(Math.sin(time * 0.5)) * 0.3);
+
+    chairTop.rotation.y = chairTop.userData.initialRotation.y + rotationOffset;
   }
 
   // Springs

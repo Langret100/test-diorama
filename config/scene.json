@@ -9,7 +9,7 @@
     "maxAzimuthAngle": 1.5707963267948966
   },
   "interaction": {
-    "hoverScale": 1.04,
+    "hoverScale": 1.4,
     "clickScaleXZ": 1.06,
     "clickScaleY": 0.92,
     "springK": 28,
@@ -17,8 +17,8 @@
   },
   "chairSway": {
     "enabled": true,
-    "speed": 0.45,
-    "yaw": 0.05
+    "speed": 0.5,
+    "yaw": 0.39269908169872414
   },
   "overlay": {
     "baseFadeMs": 900,

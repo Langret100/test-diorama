@@ -36,6 +36,26 @@
 요청에 따라 아래 오브젝트만 숨김 처리되어 있습니다.
 - `Name_Letter_1..8` (및 hover/raycaster 변형)
 - `Name_Platform_Third` (L 판)
+- `Kirby_Third_Hover_Raycaster` (방 하단 커비)
+- 창문 창틀 위 네모 장식: GLB 내 이름이 없어, **윈도우/letters 영역(z≈-4.2)** 근처의 작은 ‘플라크’ 메쉬를 자동 탐지해 숨깁니다 (코드: `hideWindowFrameDeco`).
+
+## 인터랙션(호버/클릭) 구조 (샘플 방식)
+- 모델의 `*Raycaster*` 메쉬를 **직접 클릭 대상으로 쓰지 않고**,
+  그 메쉬의 바운딩박스를 기반으로 **투명 히트박스(BoxGeometry)**를 만들어 raycast에 사용합니다.
+- 이렇게 해야 “히트박스만 반응하고 실제 오브젝트는 안 움직이는” 문제가 안 생깁니다.
+- GLB에서 일부 오브젝트가 scale=0으로 들어오는 경우가 있어(인트로 애니 잔재),
+  `Raycaster` 오브젝트는 등록 시 scale을 (1,1,1)로 보정합니다.
+
+### 디버그 팁
+- **Alt + Click** : 현재 클릭된 오브젝트의 `name` + bbox(size/center)를 콘솔에 출력합니다.
+  (창틀 네모 장식이 잘못 숨겨졌다면, 이걸로 정확한 대상 찾은 뒤 이름 기반으로 처리하도록 쉽게 바꿀 수 있습니다.)
+
+## 동적 이미지(모니터/액자/포스터) 교체
+- Enter 이후 **4초마다** 3장 중 랜덤으로 교체됩니다.
+- 나중에 이미지 교체는 파일만 갈아끼우면 됩니다.
+  - 모니터: `assets/monitor/monitor1.png`, `monitor2.png`, `monitor3.png`
+  - 액자: `assets/dynamic/frame_1.png`, `frame_2.png`, `frame_3.png`
+  - 포스터: `assets/dynamic/poster_1.png`, `poster_2.png`, `poster_3.png`
 
 ## Credits
 - Andrew Woan의 작품을 참고/활용하였습니다.
