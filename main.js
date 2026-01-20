@@ -519,12 +519,6 @@ const pointer = new THREE.Vector2(999, 999);
 const raycasterObjects = [];
 const hitboxToObjectMap = new Map();
 const interactiveObjects = new Set();
-let currentIntersects = [];
-let currentHoveredHitbox = null;
-let currentHoveredObject = null;
-let pressedHitbox = null;
-let pressedObject = null;
-let isDragging = false;
 
 function applyMaterialsAndCollect(obj) {
   obj.traverse((o) => {
@@ -831,9 +825,7 @@ function registerInteractive(originalObject) {
   interactiveObjects.add(originalObject);
 }
 
-// Pointer + raycast state
-const pointer = new THREE.Vector2();
-const raycaster = new THREE.Raycaster();
+// Pointer + raycast state (pointer/raycaster declared earlier so model traversal can register hitboxes)
 let currentIntersects = [];
 
 let currentHoveredHitbox = null;
