@@ -322,37 +322,27 @@ void main(){
 
 const themeFragmentShader = `
 uniform sampler2D uDayTexture1;
-uniform sampler2D uNightTexture1;
 uniform sampler2D uDayTexture2;
-uniform sampler2D uNightTexture2;
 uniform sampler2D uDayTexture3;
-uniform sampler2D uNightTexture3;
 uniform sampler2D uDayTexture4;
-uniform sampler2D uNightTexture4;
-uniform float uMixRatio;
 uniform int uTextureSet;
 
 varying vec2 vUv;
 
 void main(){
   vec3 dayColor;
-  vec3 nightColor;
 
   if(uTextureSet == 1){
     dayColor = texture2D(uDayTexture1, vUv).rgb;
-    nightColor = texture2D(uNightTexture1, vUv).rgb;
   } else if(uTextureSet == 2){
     dayColor = texture2D(uDayTexture2, vUv).rgb;
-    nightColor = texture2D(uNightTexture2, vUv).rgb;
   } else if(uTextureSet == 3){
     dayColor = texture2D(uDayTexture3, vUv).rgb;
-    nightColor = texture2D(uNightTexture3, vUv).rgb;
   } else {
     dayColor = texture2D(uDayTexture4, vUv).rgb;
-    nightColor = texture2D(uNightTexture4, vUv).rgb;
   }
 
-  vec3 finalColor = mix(dayColor, nightColor, uMixRatio);
+  vec3 finalColor = dayColor;
 
   // Match the original project: manual gamma correction for this ShaderMaterial
   finalColor = pow(finalColor, vec3(1.0/2.2));
@@ -365,30 +355,24 @@ const texLoader = new THREE.TextureLoader(manager);
 
 const textureMap = {
   First: {
-    day: texLoader.load(u('./assets/textures/room/day/first_texture_set_day.webp')),
-    night: texLoader.load(u('./assets/textures/room/night/first_texture_set_night.webp'))
+    day: texLoader.load(u('./assets/textures/room/day/first_texture_set_day.webp'))
   },
   Second: {
-    day: texLoader.load(u('./assets/textures/room/day/second_texture_set_day.webp')),
-    night: texLoader.load(u('./assets/textures/room/night/second_texture_set_night.webp'))
+    day: texLoader.load(u('./assets/textures/room/day/second_texture_set_day.webp'))
   },
   Third: {
-    day: texLoader.load(u('./assets/textures/room/day/third_texture_set_day.webp')),
-    night: texLoader.load(u('./assets/textures/room/night/third_texture_set_night.webp'))
+    day: texLoader.load(u('./assets/textures/room/day/third_texture_set_day.webp'))
   },
   Fourth: {
-    day: texLoader.load(u('./assets/textures/room/day/fourth_texture_set_day.webp')),
-    night: texLoader.load(u('./assets/textures/room/night/fourth_texture_set_night.webp'))
+    day: texLoader.load(u('./assets/textures/room/day/fourth_texture_set_day.webp'))
   }
 };
 
-for (const v of Object.values(textureMap)) {
-  for (const t of Object.values(v)) {
-    t.flipY = false;
-    t.colorSpace = THREE.SRGBColorSpace;
-    t.minFilter = THREE.LinearFilter;
-    t.magFilter = THREE.LinearFilter;
-  }
+for (const { day: t } of Object.values(textureMap)) {
+  t.flipY = false;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.minFilter = THREE.LinearFilter;
+  t.magFilter = THREE.LinearFilter;
 }
 
 // Environment map for glass
@@ -402,14 +386,9 @@ function createMaterialForTextureSet(textureSet) {
   return new THREE.ShaderMaterial({
     uniforms: {
       uDayTexture1: { value: textureMap.First.day },
-      uNightTexture1: { value: textureMap.First.night },
       uDayTexture2: { value: textureMap.Second.day },
-      uNightTexture2: { value: textureMap.Second.night },
       uDayTexture3: { value: textureMap.Third.day },
-      uNightTexture3: { value: textureMap.Third.night },
       uDayTexture4: { value: textureMap.Fourth.day },
-      uNightTexture4: { value: textureMap.Fourth.night },
-      uMixRatio: { value: 0.0 },
       uTextureSet: { value: textureSet }
     },
     vertexShader: themeVertexShader,
@@ -725,7 +704,7 @@ function hideLowerWindowSillDecos(rootScene) {
     if (ratio > 1.6) return;
 
     // Slightly favor right side (window side), but don't require it
-    if (center.x < 0.2 || center.x > 3.8) return;
+    if (center.x < -1.2 || center.x > 4.2) return;
 
     o.visible = false;
     hidden++;
@@ -741,6 +720,183 @@ function hideKirbyAndNamePlatform(rootScene) {
     if (name.includes('Kirby')) o.visible = false;
     if (name.includes('Name_Platform')) o.visible = false;
   });
+
+
+// --- Window sill anchor + doll relocation (monitor-side dolls -> window frame)
+function getWindowSillAnchor(rootScene) {
+  // Prefer Name_Letter_* nodes (even if hidden) to locate the window frame.
+  const positions = [];
+  let maxY = -Infinity;
+  rootScene.traverse((o) => {
+    const n = o.name || '';
+    if (!n.includes('Name_Letter')) return;
+    const p = new THREE.Vector3();
+    o.getWorldPosition(p);
+    positions.push(p);
+    if (p.y > maxY) maxY = p.y;
+  });
+
+  if (positions.length) {
+    const anchor = positions.reduce((a, b) => a.add(b), new THREE.Vector3()).multiplyScalar(1 / positions.length);
+    return { anchor, maxY };
+  }
+
+  // Fallback to the removed name platform if letters are missing
+  const platform = rootScene.getObjectByName('Name_Platform_Third') || rootScene.getObjectByName('Name_Platform_Third_Raycaster_Hover');
+  if (platform) {
+    const anchor = new THREE.Vector3();
+    platform.getWorldPosition(anchor);
+    return { anchor, maxY: anchor.y };
+  }
+
+  return null;
+}
+
+function translateHitboxForObject(originalObject, deltaWorld) {
+  // Our hitboxes are placed in world-space and do NOT follow later transforms.
+  for (const [hitbox, obj] of hitboxToObjectMap.entries()) {
+    if (obj !== originalObject) continue;
+    if (hitbox === originalObject) continue;
+    hitbox.position.add(deltaWorld);
+    hitbox.updateMatrixWorld(true);
+  }
+}
+
+function moveInteractiveObjectToWorld(originalObject, targetWorldPos) {
+  if (!originalObject) return;
+  originalObject.updateMatrixWorld(true);
+  const oldWorldPos = new THREE.Vector3();
+  originalObject.getWorldPosition(oldWorldPos);
+  const deltaWorld = targetWorldPos.clone().sub(oldWorldPos);
+
+  const parent = originalObject.parent;
+  const localTarget = parent ? parent.worldToLocal(targetWorldPos.clone()) : targetWorldPos.clone();
+  originalObject.position.copy(localTarget);
+  originalObject.updateMatrixWorld(true);
+
+  // Keep hover/click animation baselines aligned with the new position.
+  originalObject.userData.initialPosition = originalObject.position.clone();
+  translateHitboxForObject(originalObject, deltaWorld);
+}
+
+function relocateMonitorSideDollsToWindowSill(rootScene) {
+  const anchorData = getWindowSillAnchor(rootScene);
+  if (!anchorData) return;
+
+  const { anchor, maxY } = anchorData;
+  const spacingX = 0.75;
+  const y = maxY + 0.18; // "placed on top" feeling
+  const z = anchor.z + 0.18;
+
+  const targetLeft = new THREE.Vector3(anchor.x - spacingX, y, z);
+  const targetRight = new THREE.Vector3(anchor.x + spacingX, y, z);
+
+  // The two monitor-side dolls in this GLB are the rabbit + rabbit son.
+  const rabbitMain = rootScene.getObjectByName('MrRabbit_Fourth_Raycaster_Hover')
+    || rootScene.getObjectByName('MrRabbit_Fourth_Hover_Raycaster')
+    || (() => {
+      let found = null;
+      rootScene.traverse((o) => {
+        const n = o.name || '';
+        if (found) return;
+        if (n.includes('MrRabbit') && n.includes('Raycaster') && n.includes('Hover')) found = o;
+      });
+      return found;
+    })();
+
+  const rabbitSon = rootScene.getObjectByName('MrRabbit_Son_Raycaster_Fourth_Hover')
+    || (() => {
+      let found = null;
+      rootScene.traverse((o) => {
+        const n = o.name || '';
+        if (found) return;
+        if (n.includes('MrRabbit_Son') && n.includes('Raycaster') && n.includes('Hover')) found = o;
+      });
+      return found;
+    })();
+
+  if (rabbitMain) moveInteractiveObjectToWorld(rabbitMain, targetLeft);
+  if (rabbitSon) moveInteractiveObjectToWorld(rabbitSon, targetRight);
+}
+
+// --- Post-it (behind monitor) cleanup
+function hideMonitorPostItDecalMeshes(rootScene) {
+  // If the post-it is a thin plane mesh near the monitor back, hide it.
+  const screen = rootScene.getObjectByName('Screen');
+  if (!screen) return;
+
+  const screenPos = new THREE.Vector3();
+  screen.getWorldPosition(screenPos);
+
+  let hidden = 0;
+  rootScene.traverse((o) => {
+    if (!(o && o.isMesh)) return;
+    const name = (o.name || '').toLowerCase();
+    if (name.includes('screen') || name.includes('glass')) return;
+
+    const box = new THREE.Box3().setFromObject(o);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+
+    const dist = center.distanceTo(screenPos);
+    const thickness = Math.min(size.x, size.y, size.z);
+    const maxdim = Math.max(size.x, size.y, size.z);
+
+    // Small thin plaque, close to the screen and slightly behind it.
+    if (dist > 0.75) return;
+    if (thickness > 0.015) return;
+    if (maxdim < 0.05 || maxdim > 0.45) return;
+    if (center.z > screenPos.z - 0.03) return;
+
+    o.visible = false;
+    hidden++;
+  });
+
+  if (hidden) console.info('[auto-hide] monitor post-it decals:', hidden);
+}
+
+// --- Kirby floor decal cleanup (if any decal plane mesh remains)
+function hideFloorDecalsNearKirby(rootScene) {
+  let kirby = null;
+  rootScene.traverse((o) => {
+    if (kirby) return;
+    const n = o.name || '';
+    if (n.includes('Kirby')) kirby = o;
+  });
+  if (!kirby) return;
+
+  const kPos = new THREE.Vector3();
+  kirby.getWorldPosition(kPos);
+
+  let hidden = 0;
+  rootScene.traverse((o) => {
+    if (!(o && o.isMesh)) return;
+    const name = (o.name || '').toLowerCase();
+    if (name.includes('floor') || name.includes('wall') || name.includes('piano') || name.includes('kirby')) return;
+
+    const box = new THREE.Box3().setFromObject(o);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+
+    const thickness = Math.min(size.x, size.y, size.z);
+    const maxdim = Math.max(size.x, size.y, size.z);
+
+    // Very thin plane close to the ground near Kirby's former position.
+    const distXZ = Math.hypot(center.x - kPos.x, center.z - kPos.z);
+    if (distXZ > 0.9) return;
+    if (center.y > kPos.y + 0.25) return;
+    if (thickness > 0.012) return;
+    if (maxdim < 0.08 || maxdim > 1.2) return;
+
+    o.visible = false;
+    hidden++;
+  });
+
+  if (hidden) console.info('[auto-hide] floor decals near Kirby:', hidden);
 }
 
 let root = null;
@@ -751,6 +907,9 @@ try {
   applyMaterialsAndCollect(root);
   hideKirbyAndNamePlatform(root);
   hideLowerWindowSillDecos(root);
+  relocateMonitorSideDollsToWindowSill(root);
+  hideMonitorPostItDecalMeshes(root);
+  hideFloorDecalsNearKirby(root);
   initDynamicSurfaces(root);
   // Re-apply the intended starting view after the GLB is decoded/added.
   setStartCamera();

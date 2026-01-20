@@ -26,7 +26,6 @@
 ### 3) 텍스처 경로가 안 맞아서 전부 흰색/검정으로 뜨는 문제
 - 아래 폴더 구조와 파일명이 코드와 정확히 일치해야 합니다.
   - `assets/textures/room/day/*_texture_set_day.webp`
-  - `assets/textures/room/night/*_texture_set_night.webp`
 
 ### 4) Draco 디코더 로드 오류
 - `DRACOLoader.setDecoderPath('...')` 경로에 `draco_decoder.js/.wasm`가 있어야 합니다.
