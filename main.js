@@ -679,7 +679,7 @@ function hideWindowFrameBlueD(rootScene) {
   });
 }
 
-let root = null;let root = null;
+let root = null;
 try {
   const gltf = await gltfLoader.loadAsync(u('./assets/models/Room_Portfolio.glb'));
   root = gltf.scene;
