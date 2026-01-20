@@ -2,6 +2,8 @@ import * as THREE from 'https://esm.sh/three@0.160.0';
 import { OrbitControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'https://esm.sh/three@0.160.0/examples/jsm/loaders/DRACOLoader.js';
+import gsap from 'https://esm.sh/gsap@3.12.5';
+import { Howl } from 'https://esm.sh/howler@2.2.4';
 
 // ---------- helpers
 const u = (p) => new URL(p, import.meta.url).toString();
@@ -21,6 +23,8 @@ const overlay = document.getElementById('intro');
 const enterBtn = document.getElementById('enterBtn');
 const modal = document.getElementById('modal');
 const modalContent = document.getElementById('modalContent');
+const modalClose = document.getElementById('modalClose');
+const modalBackdrop = document.getElementById('modalBackdrop');
 const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
 
 // ---------- config
@@ -69,6 +73,57 @@ const cfg = {
 
 const actions = actionsCfg ?? { openInNewTab: true, byName: {} };
 
+// ---------- Modal router (ABOUT / WORK / CONTACT)
+// actions.json can map 3D objects to hash pages (#about, #my-work, #contact).
+const modalPages = {
+  'my-work': `
+    <h2>My Work</h2>
+    <p>Coming soon. Replace this content in <code>main.js</code> if you want fully custom pages.</p>
+  `,
+  about: `
+    <h2>About</h2>
+    <p>Coming soon.</p>
+  `,
+  contact: `
+    <h2>Contact</h2>
+    <p>Coming soon.</p>
+  `
+};
+
+function closeModal() {
+  if (!modal) return;
+  modal.classList.add('hidden');
+  modal.setAttribute('aria-hidden', 'true');
+}
+
+function openModal(key) {
+  if (!modal || !modalContent) return;
+  modalContent.innerHTML = modalPages[key] ?? `
+    <h2>${key}</h2>
+    <p>Coming soon.</p>
+  `;
+  modal.classList.remove('hidden');
+  modal.setAttribute('aria-hidden', 'false');
+}
+
+modalClose?.addEventListener('click', closeModal, { passive: true });
+modalBackdrop?.addEventListener('click', closeModal, { passive: true });
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeModal();
+});
+
+function handleAction(action) {
+  if (!action) return;
+  if (action.startsWith('#')) {
+    openModal(action.slice(1));
+    return;
+  }
+  if (actions.openInNewTab) window.open(action, '_blank', 'noopener,noreferrer');
+  else window.location.href = action;
+}
+
+
+// ---------- core scene
 // ---------- core scene
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#D9CAD1');
@@ -93,14 +148,32 @@ renderer.shadowMap.enabled = false;
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
-controls.dampingFactor = 0.05;
+controls.dampingFactor = 0.08;
+controls.rotateSpeed = 0.45;
+controls.zoomSpeed = 0.9;
 controls.enablePan = false;
+// Keep the camera above the floor and avoid extreme tilts
+controls.minPolarAngle = Math.PI * 0.15;
+controls.maxPolarAngle = Math.PI * 0.55;
+// Do NOT clamp azimuth (causes 'stuck' feeling)
+controls.minAzimuthAngle = -Infinity;
+controls.maxAzimuthAngle = Infinity;
+// Touch gestures: 1 finger rotate, 2 finger pinch-to-zoom
+controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+if ('zoomToCursor' in controls) controls.zoomToCursor = true;
+
+// Prevent the page from scrolling/zooming while interacting with the canvas.
+renderer.domElement.style.touchAction = 'none';
+renderer.domElement.addEventListener(
+  'wheel',
+  (e) => {
+    e.preventDefault();
+  },
+  { passive: false }
+);
+
 controls.minDistance = cfg.controls.minDistance;
 controls.maxDistance = cfg.controls.maxDistance;
-controls.minPolarAngle = cfg.controls.minPolarAngle;
-controls.maxPolarAngle = cfg.controls.maxPolarAngle;
-controls.minAzimuthAngle = cfg.controls.minAzimuthAngle;
-controls.maxAzimuthAngle = cfg.controls.maxAzimuthAngle;
 
 function setStartCamera() {
   // Values taken from the original implementation (desktop vs mobile)
@@ -168,66 +241,49 @@ function overlayAlpha(now) {
 }
 
 // ---------- audio (simple synth)
-let audioCtx = null;
-let master = null;
-let filter = null;
+// ---------- Audio (Howler)
+// (Assets copied from source.zip into ./assets/audio/...)
+const bgm = new Howl({
+  src: [u('./assets/audio/music/cosmic_candy.ogg')],
+  loop: true,
+  volume: 0.6
+});
+const clickSfx = new Howl({
+  src: [u('./assets/audio/sfx/click/bubble.ogg')],
+  volume: 0.85
+});
+const pianoSamples = Array.from({ length: 24 }, (_, i) =>
+  new Howl({ src: [u(`./assets/audio/sfx/piano/Key_${i + 1}.ogg`)], volume: 0.9 })
+);
 
+function playPiano(idx) {
+  const s = pianoSamples[idx];
+  if (!s) return;
+  s.stop();
+  s.play();
+}
+
+let audioUnlocked = false;
 function unlockAudio() {
-  if (audioCtx) return;
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  master = audioCtx.createGain();
-  master.gain.value = 0.18;
-
-  filter = audioCtx.createBiquadFilter();
-  filter.type = 'lowpass';
-  filter.frequency.value = 2200;
-  filter.Q.value = 0.6;
-
-  filter.connect(master);
-  master.connect(audioCtx.destination);
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+  bgm.play();
 }
 
-function playTone(freq, duration = 0.55) {
-  if (!audioCtx || !master || !filter) return;
-  const t0 = audioCtx.currentTime;
-
-  const o1 = audioCtx.createOscillator();
-  o1.type = 'triangle';
-  o1.frequency.setValueAtTime(freq, t0);
-
-  const o2 = audioCtx.createOscillator();
-  o2.type = 'sine';
-  o2.frequency.setValueAtTime(freq * 2, t0);
-
-  const g = audioCtx.createGain();
-  g.gain.setValueAtTime(0.0, t0);
-  g.gain.linearRampToValueAtTime(0.35, t0 + 0.01);
-  g.gain.exponentialRampToValueAtTime(0.0008, t0 + duration);
-
-  o1.connect(g);
-  o2.connect(g);
-  g.connect(filter);
-
-  o1.start(t0);
-  o2.start(t0);
-  o1.stop(t0 + duration + 0.02);
-  o2.stop(t0 + duration + 0.02);
-}
-
-// ---------- media (dynamic images)
-// We only need a user gesture to unlock audio (piano). Monitor uses rotating images.
-function unlockMedia() {
-  unlockAudio();
-}
-
+// We only need a user gesture to unlock audio; the Enter button click qualifies.
 enterBtn?.addEventListener('click', () => {
   if (enterRequested) return;
   enterRequested = true;
   enterStart = performance.now();
-  unlockMedia();
+  unlockAudio();
 });
 
-// ---------- Theme shader (ported from the original source, but without manual gamma)
+// Fallback: if Enter was triggered some other way, the first pointerdown unlocks audio.
+window.addEventListener('pointerdown', () => {
+  if (enterRequested) unlockAudio();
+}, { once: true, passive: true });
+
+// ---------- Theme shader// ---------- Theme shader (ported from the original source, but without manual gamma)
 const themeVertexShader = `
 varying vec2 vUv;
 void main(){
@@ -429,7 +485,8 @@ let frame1Mesh = null;
 let frame2Mesh = null;
 let frame3Mesh = null;
 let posterMesh = null;
-const piano = new Map();
+const pianoCandidates = [];
+const pianoKeyIndex = new Map();
 
 // ---------- Raycaster / interaction shared state
 // Declared early so model traversal can register hitboxes.
@@ -451,16 +508,13 @@ function applyMaterialsAndCollect(obj) {
 
     const name = o.name || '';
     const lower = name.toLowerCase();
-    // Hide ONLY what was requested:
-    // - Alphabet models on the window frame (Name_Letter_1..8)
-    // - The board with an 'L' (Name_Platform_Third)
-    // Include their hover/raycaster variants if present.
-    const isLetter = /^name_letter_[1-8](?:$|_)/i.test(name);
-    const isLetterRay = /^name_letter_[1-8].*(raycaster|hover)/i.test(lower);
-    const isLBoard = lower === 'name_platform_third' || lower.includes('name_platform_third');
-    const isKirby = lower.includes('kirby');
+    // Hide ONLY what was requested (avoid broad matches):
+    const letterRe = /^Name_Letter_[1-8]_Third(?:_Raycaster_Hover)?$/;
+    const isLetter = letterRe.test(name);
+    const isLBoard = name === 'Name_Platform_Third';
+    const isKirby = /\bKirby\b/i.test(name);
 
-    if (isLetter || isLetterRay || isLBoard || isKirby) {
+    if (isLetter || isLBoard || isKirby) {
       o.visible = false;
       return;
     }
@@ -500,18 +554,10 @@ function applyMaterialsAndCollect(obj) {
       registerInteractive(o);
     }
 
-    // Piano mapping (works with *_Key_Pointer_Raycaster_Third names)
-    const m = name.match(/^([A-G])(#?)(\d)_Key_/);
-    if (m) {
-      const note = m[1] + (m[2] ? '#' : '');
-      const octave = parseInt(m[3], 10);
-      const idx = { C:0,'C#':1,D:2,'D#':3,E:4,F:5,'F#':6,G:7,'G#':8,A:9,'A#':10,B:11 }[note];
-      if (Number.isFinite(idx)) {
-        const midi = (octave + 1) * 12 + idx;
-        const freq = 440 * Math.pow(2, (midi - 69) / 12);
-        piano.set(o, freq);
-      }
-    }
+    // Piano mapping: collect key meshes and assign samples later
+    const k = name.match(/^([A-G])(#?)(\d)_Key_/);
+    if (k) pianoCandidates.push(o);
+
   });
 }
 
@@ -600,69 +646,68 @@ function updateRotators(nowMs) {
   }
 }
 
-// ---------- Window-frame decoration removal
-// The 'square decoration on the window frame' is unnamed in this GLB, so we pick a candidate by
-// bounding-box heuristics near the window/letters region and hide it.
-let windowFrameDeco = null;
-function hideWindowFrameDeco(rootScene) {
+// ---------- Window-frame decoration removal (blue 'D')
+// The decoration is unnamed; we detect it by UVs on the Third texture set and location near the window.
+function hideWindowFrameBlueD(rootScene) {
   if (!rootScene) return;
-  const box = new THREE.Box3();
-  const size = new THREE.Vector3();
-  const center = new THREE.Vector3();
+  const D_U = [0.834, 0.934];
+  const D_V = [0.782, 0.878];
+  const M = 0.004;
 
-  let best = null;
-  let bestScore = -1;
+  function uvHitsD(geom) {
+    const uv = geom?.attributes?.uv;
+    if (!uv) return false;
+    for (let i = 0; i < uv.count; i++) {
+      const u0 = uv.getX(i);
+      const v0 = uv.getY(i);
+      if (u0 > D_U[0] - M && u0 < D_U[1] + M && v0 > D_V[0] - M && v0 < D_V[1] + M) return true;
+    }
+    return false;
+  }
 
+  const p = new THREE.Vector3();
   rootScene.traverse((o) => {
     if (!o.isMesh || !o.visible) return;
-    const name = o.name || '';
-    const lower = name.toLowerCase();
-
-    // Skip known surfaces
-    if (lower.includes('screen') || lower.includes('frame_') || lower.includes('glass') || lower.includes('water')) return;
-    if (lower.includes('kirby') || lower.includes('name_letter') || lower.includes('name_platform')) return;
-
-    box.setFromObject(o);
-    box.getSize(size);
-    box.getCenter(center);
-
-    const vol = size.x * size.y * size.z;
-    if (vol < 1e-6 || vol > 0.25) return;
-
-    // Window/letter cluster sits around z ~ -4.2 in this model.
-    if (center.z > -3.4) return;
-    if (center.z < -5.2) return;
-    if (center.y < 2.6 || center.y > 4.8) return;
-
-    const dims = [size.x, size.y, size.z].sort((a, b) => a - b);
-    const thickness = dims[0];
-    const maxdim = dims[2];
-    if (thickness > 0.12) return;
-    if (maxdim < 0.12 || maxdim > 1.4) return;
-
-    // Prefer things closest to the letters area and very 'plaque-like' (thin)
-    const score = (0.12 - thickness) * 6 + (-center.z) * 0.5 + center.y * 0.2 + maxdim * 0.2 - vol;
-    if (score > bestScore) {
-      bestScore = score;
-      best = o;
-    }
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    if (!mats.includes(roomMaterials.Third)) return;
+    if (!uvHitsD(o.geometry)) return;
+    o.getWorldPosition(p);
+    // The window/letter cluster sits around z ~ -4.2 in this model.
+    const nearWindow = p.z < -3.4 && p.z > -5.2 && p.y > 2.6 && p.y < 4.8;
+    if (!nearWindow) return;
+    o.visible = false;
   });
-
-  if (best) {
-    windowFrameDeco = best;
-    best.visible = false;
-    console.info('[auto-hide] window-frame deco:', best.name || '<unnamed>', best.uuid);
-  }
 }
 
-let root = null;
+let root = null;let root = null;
 try {
   const gltf = await gltfLoader.loadAsync(u('./assets/models/Room_Portfolio.glb'));
   root = gltf.scene;
   scene.add(root);
   applyMaterialsAndCollect(root);
-  hideWindowFrameDeco(root);
+  hideWindowFrameBlueD(root);
   initDynamicSurfaces(root);
+
+  // Fit controls to scene bounds (prevents zoom/rotate clamping bugs)
+  const bounds = new THREE.Box3().setFromObject(root);
+  const size = bounds.getSize(new THREE.Vector3()).length();
+  const center = bounds.getCenter(new THREE.Vector3());
+  controls.target.copy(center);
+  controls.minDistance = Math.max(1, size / 25);
+  controls.maxDistance = Math.max(controls.minDistance + 1, size / 2);
+  camera.near = size / 100;
+  camera.far = size * 2;
+  camera.updateProjectionMatrix();
+  controls.update();
+
+  // Piano sample mapping (left-to-right)
+  const uniq = Array.from(new Set(pianoCandidates));
+  const tmp = new THREE.Vector3();
+  uniq.sort((a, b) => a.getWorldPosition(tmp).x - b.getWorldPosition(new THREE.Vector3()).x);
+  uniq.slice(0, 24).forEach((o, idx) => pianoKeyIndex.set(o, idx));
+  if (pianoKeyIndex.size && pianoKeyIndex.size !== 24) {
+    console.warn('[piano] expected 24 keys, got', pianoKeyIndex.size);
+  }
 } catch (e) {
   console.error(e);
   if (enterBtn) enterBtn.textContent = 'Enter';
@@ -757,111 +802,81 @@ function computeIntersects() {
   currentIntersects = raycaster.intersectObjects(raycasterObjects, false);
 }
 
-// ----- hover / press animation targets
-const springs = new Map(); // object -> spring state
-
-function makeSpring(mesh) {
+// ----- hover / press animation (GSAP)
+function tweenScale(mesh, factor, { duration = 0.12, ease = 'power2.out' } = {}) {
+  if (!mesh) return;
   stashInitialTransforms(mesh);
-  const base = mesh.userData.initialScale.clone();
-  return { mesh, base, target: base.clone(), current: mesh.scale.clone(), vel: new THREE.Vector3() };
+  const base = mesh.userData.initialScale;
+  gsap.killTweensOf(mesh.scale);
+  gsap.to(mesh.scale, {
+    x: base.x * factor,
+    y: base.y * factor,
+    z: base.z * factor,
+    duration,
+    ease
+  });
 }
 
-function setScaleTarget(mesh, target) {
-  let s = springs.get(mesh);
-  if (!s) {
-    s = makeSpring(mesh);
-    springs.set(mesh, s);
+function setHovered(mesh, on) {
+  if (!mesh) return;
+  tweenScale(mesh, on ? 1.06 : 1.0);
+}
+
+function setPressed(mesh, on) {
+  if (!mesh) return;
+  if (pianoKeyIndex.has(mesh)) return; // piano keys are rotate-only
+  if (!on) {
+    // release to hover or base
+    const isHover = mesh === currentHoveredObject;
+    tweenScale(mesh, isHover ? 1.06 : 1.0, { duration: 0.14 });
+    return;
   }
-  s.target.copy(target);
+  stashInitialTransforms(mesh);
+  const base = mesh.userData.initialScale;
+  gsap.killTweensOf(mesh.scale);
+  gsap.to(mesh.scale, {
+    x: base.x * 1.06,
+    z: base.z * 1.06,
+    y: base.y * 0.92,
+    duration: 0.08,
+    ease: 'power2.out'
+  });
 }
 
-function setHoverState(object, isHovering) {
-  if (!object) return;
-  stashInitialTransforms(object);
-
-  let scale = 1.4;
-  const name = object.name || '';
-
-  if (name.includes('Fish')) scale = 1.2;
-
-  const base = object.userData.initialScale;
-  const tgt = base.clone().multiplyScalar(isHovering ? scale : 1.0);
-  setScaleTarget(object, tgt);
-
-  // Rotation + position accents (as in sample)
-  object.userData._hoverRotXTarget = object.userData.initialRotation.x;
-  object.userData._hoverPosYTarget = object.userData.initialPosition.y;
-
-  if (isHovering) {
-    if (name.includes('About_Button')) {
-      object.userData._hoverRotXTarget = object.userData.initialRotation.x - Math.PI / 10;
-    } else if (
-      name.includes('Contact_Button') ||
-      name.includes('My_Work_Button') ||
-      name.includes('GitHub') ||
-      name.includes('YouTube') ||
-      name.includes('Twitter')
-    ) {
-      object.userData._hoverRotXTarget = object.userData.initialRotation.x + Math.PI / 10;
-    }
-
-    if (name.includes('Boba') || name.includes('Name_Letter')) {
-      object.userData._hoverPosYTarget = object.userData.initialPosition.y + 0.2;
-    }
-  }
-}
-
-function setPressState(object, isPressing) {
-  if (!object) return;
-  stashInitialTransforms(object);
-  const base = object.userData.initialScale;
-  if (isPressing) {
-    const t = base.clone();
-    t.x *= cfg.interaction.clickScaleXZ;
-    t.z *= cfg.interaction.clickScaleXZ;
-    t.y *= cfg.interaction.clickScaleY;
-    setScaleTarget(object, t);
-  } else {
-    // return to hover target if hovered, else base
-    const on = object === currentHoveredObject;
-    const scale = on ? 1.4 : 1.0;
-    setScaleTarget(object, base.clone().multiplyScalar(scale));
-  }
-}
-
-function pickHitbox() {
-  computeIntersects();
-  return currentIntersects.length ? currentIntersects[0].object : null;
+function pressKey(keyMesh) {
+  stashInitialTransforms(keyMesh);
+  gsap.killTweensOf(keyMesh.rotation);
+  gsap.to(keyMesh.rotation, {
+    x: keyMesh.userData.initialRotation.x + Math.PI / 42,
+    duration: 0.06,
+    yoyo: true,
+    repeat: 1,
+    ease: 'power1.out'
+  });
 }
 
 // ----- click/open actions
+// ----- click/open actions
 function openActionFromObject(object) {
   if (!object) return;
-  const url = actions?.byName?.[object.name];
-  if (!url) return;
-
-  if (url.startsWith('#')) {
-    openModal(modalPages[url] ?? `<h2>${url.replace('#','')}</h2><p>Coming soon</p>`);
-    return;
-  }
-
-  if (actions.openInNewTab) window.open(url, '_blank', 'noopener,noreferrer');
-  else window.location.href = url;
+  const action = actions?.byName?.[object.name];
+  handleAction(action);
 }
 
 function handleClickOnObject(object) {
   if (!object) return;
 
-  // Piano: play tone and do a quick key-press tilt
-  if (piano.has(object)) {
-    playTone(piano.get(object), 0.55);
-    stashInitialTransforms(object);
-    object.rotation.x = object.userData.initialRotation.x + Math.PI / 42;
-    // snap back via target
-    object.userData._keyReturnAt = performance.now() + 220;
+    // Piano keys: play sample + rotate only (no scale squash)
+  if (pianoKeyIndex.has(object)) {
+    playPiano(pianoKeyIndex.get(object));
+    pressKey(object);
+    return;
   }
 
-  openActionFromObject(object);
+  // Click sfx for other interactives
+  clickSfx?.play?.();
+
+  handleAction(actions?.byName?.[object.name]);
 }
 
 // Pointer events
@@ -869,6 +884,19 @@ canvas.addEventListener('pointermove', (ev) => {
   const r = canvas.getBoundingClientRect();
   pointer.x = ((ev.clientX - r.left) / r.width) * 2 - 1;
   pointer.y = -(((ev.clientY - r.top) / r.height) * 2 - 1);
+
+  if (!enterRequested) return;
+  computeIntersects();
+  const hitbox = currentIntersects.length ? currentIntersects[0].object : null;
+  const obj = hitbox ? (hitboxToObjectMap.get(hitbox) || hitbox.userData.originalObject || null) : null;
+
+  if (hitbox !== currentHoveredHitbox) {
+    if (currentHoveredObject) setHovered(currentHoveredObject, false);
+    currentHoveredHitbox = hitbox;
+    currentHoveredObject = obj;
+    if (currentHoveredObject) setHovered(currentHoveredObject, true);
+    updateCursor();
+  }
 });
 
 canvas.addEventListener('pointerdown', (ev) => {
@@ -883,7 +911,7 @@ canvas.addEventListener('pointerdown', (ev) => {
 
   pressedHitbox = hitbox;
   pressedObject = obj;
-  setPressState(obj, true);
+  setPressed(obj, true);
 
   // prevent the first drag frame from rotating the camera when a button is pressed
   ev.stopPropagation?.();
@@ -898,7 +926,7 @@ canvas.addEventListener('pointerup', (ev) => {
   const hitbox = pickHitbox();
   const obj = hitbox ? (hitboxToObjectMap.get(hitbox) || hitbox.userData.originalObject) : null;
 
-  setPressState(pressedObject, false);
+  setPressed(pressedObject, false);
 
   if (obj === pressedObject) {
     handleClickOnObject(pressedObject);
@@ -912,7 +940,7 @@ canvas.addEventListener('pointerup', (ev) => {
 canvas.addEventListener('pointerleave', () => {
   isDragging = false;
   if (pressedObject) {
-    setPressState(pressedObject, false);
+    setPressed(pressedObject, false);
     pressedObject = null;
     pressedHitbox = null;
   }
@@ -947,38 +975,6 @@ function tick(now) {
   overlay.style.pointerEvents = a < 0.02 ? 'none' : 'auto';
   if (a < 0.01) overlay.classList.add('hidden');
 
-  // Raycaster hover (hitbox -> visible mesh)
-  if (enterRequested) {
-    computeIntersects();
-    const hitbox = currentIntersects.length ? currentIntersects[0].object : null;
-    const obj = hitbox ? (hitboxToObjectMap.get(hitbox) || hitbox.userData.originalObject || null) : null;
-
-    if (hitbox !== currentHoveredHitbox) {
-      if (currentHoveredObject) setHoverState(currentHoveredObject, false);
-      currentHoveredHitbox = hitbox;
-      currentHoveredObject = obj;
-      if (currentHoveredObject) setHoverState(currentHoveredObject, true);
-      updateCursor();
-    }
-
-    // Dampen rotation/position toward hover targets (sample-like)
-    if (!reduceMotion) {
-      for (const o of interactiveObjects) {
-        if (!o || !o.userData) continue;
-        if (!o.userData.initialRotation || !o.userData.initialPosition) stashInitialTransforms(o);
-        const targetRotX = o.userData._hoverRotXTarget ?? o.userData.initialRotation.x;
-        const targetPosY = o.userData._hoverPosYTarget ?? o.userData.initialPosition.y;
-        o.rotation.x = THREE.MathUtils.damp(o.rotation.x, targetRotX, 12, dt);
-        o.position.y = THREE.MathUtils.damp(o.position.y, targetPosY, 12, dt);
-
-        if (o.userData._keyReturnAt && now >= o.userData._keyReturnAt) {
-          o.rotation.x = THREE.MathUtils.damp(o.rotation.x, o.userData.initialRotation.x, 18, dt);
-          if (Math.abs(o.rotation.x - o.userData.initialRotation.x) < 5e-4) delete o.userData._keyReturnAt;
-        }
-      }
-    }
-  }
-
   // Dynamic surfaces (monitor / frames / poster)
   updateRotators(now);
 
@@ -994,16 +990,6 @@ function tick(now) {
       (1 - Math.abs(Math.sin(time * 0.5)) * 0.3);
 
     chairTop.rotation.y = chairTop.userData.initialRotation.y + rotationOffset;
-  }
-
-  // Springs
-  for (const s of springs.values()) {
-    const k = cfg.interaction.springK;
-    const d = cfg.interaction.springD;
-    s.vel.addScaledVector(s.target.clone().sub(s.current), k * dt);
-    s.vel.multiplyScalar(Math.exp(-d * dt));
-    s.current.addScaledVector(s.vel, dt);
-    s.mesh.scale.copy(s.current);
   }
 
   controls.update();

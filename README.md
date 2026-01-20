@@ -32,6 +32,14 @@
 - `DRACOLoader.setDecoderPath('...')` 경로에 `draco_decoder.js/.wasm`가 있어야 합니다.
 - 오타(예: 변수명)로 DRACO 설정이 끊기면 GLB 로딩이 실패합니다.
 
+### 5) 모바일 콘솔 오류 / 줌-제스처가 이상한 문제
+- 3D 버튼(ABOUT/WORK/CONTACT)은 `config/actions.json`에서 `#about` 같은 해시로 매핑됩니다.
+  - 이 해시를 열 때 `openModal()`이 없으면 `openModal is not defined` 오류가 납니다.
+  - 그래서 `main.js`에 **항상** `openModal()` / `closeModal()` / `modalPages`를 정의해두었습니다.
+- 모바일/트랙패드에서 줌이 부자연스럽거나 페이지가 스크롤되는 경우:
+  - `styles.css`의 `#c { touch-action: none; }`가 꼭 필요합니다.
+  - `main.js`에서 `renderer.domElement.style.touchAction = 'none'` + `wheel` 기본동작 차단으로 브라우저 제스처 하이재킹을 막습니다.
+
 ## 커스텀 제거 대상
 요청에 따라 아래 오브젝트만 숨김 처리되어 있습니다.
 - `Name_Letter_1..8` (및 hover/raycaster 변형)

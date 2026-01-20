@@ -21,9 +21,11 @@
     <button id="enterBtn" type="button">Enter</button>
   </div>
 
-  <!-- Minimal modal (opened by 3D objects like ABOUT). Click anywhere to close. -->
+  <!-- Minimal modal (ABOUT / MY WORK / CONTACT) -->
   <div id="modal" class="modal hidden" aria-hidden="true">
-    <div class="modalCard" role="dialog" aria-modal="true">
+    <div id="modalBackdrop" class="modal-backdrop"></div>
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <button id="modalClose" class="modal-close" type="button" aria-label="Close">×</button>
       <div id="modalContent" class="modalContent"></div>
     </div>
   </div>
