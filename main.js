@@ -791,32 +791,33 @@ function relocateMonitorSideDollsToWindowSill(rootScene) {
   const targetLeft = new THREE.Vector3(anchor.x - spacingX, y, z);
   const targetRight = new THREE.Vector3(anchor.x + spacingX, y, z);
 
-  // The two monitor-side dolls in this GLB are the rabbit + rabbit son.
-  const rabbitMain = rootScene.getObjectByName('MrRabbit_Fourth_Raycaster_Hover')
+  // The two monitor-side dolls: Poro + MrRabbit (raycaster/hover nodes).
+  const poro = rootScene.getObjectByName('Poro_Raycaster_Hover_Fourth')
+    || (() => {
+      let found = null;
+      rootScene.traverse((o) => {
+        if (found) return;
+        const n = o.name || '';
+        if (n.includes('Poro') && n.includes('Raycaster') && n.includes('Hover')) found = o;
+      });
+      return found;
+    })();
+
+  const rabbit = rootScene.getObjectByName('MrRabbit_Fourth_Raycaster_Hover')
     || rootScene.getObjectByName('MrRabbit_Fourth_Hover_Raycaster')
     || (() => {
       let found = null;
       rootScene.traverse((o) => {
-        const n = o.name || '';
         if (found) return;
-        if (n.includes('MrRabbit') && n.includes('Raycaster') && n.includes('Hover')) found = o;
+        const n = o.name || '';
+        if (n.includes('MrRabbit') && n.includes('Raycaster') && n.includes('Hover') && !n.includes('Son')) found = o;
       });
       return found;
     })();
 
-  const rabbitSon = rootScene.getObjectByName('MrRabbit_Son_Raycaster_Fourth_Hover')
-    || (() => {
-      let found = null;
-      rootScene.traverse((o) => {
-        const n = o.name || '';
-        if (found) return;
-        if (n.includes('MrRabbit_Son') && n.includes('Raycaster') && n.includes('Hover')) found = o;
-      });
-      return found;
-    })();
-
-  if (rabbitMain) moveInteractiveObjectToWorld(rabbitMain, targetLeft);
-  if (rabbitSon) moveInteractiveObjectToWorld(rabbitSon, targetRight);
+  // Natural placement: left/right split.
+  if (poro) moveInteractiveObjectToWorld(poro, targetLeft);
+  if (rabbit) moveInteractiveObjectToWorld(rabbit, targetRight);
 }
 
 // --- Post-it (behind monitor) cleanup
@@ -900,25 +901,25 @@ function hideFloorDecalsNearKirby(rootScene) {
 }
 
 let root = null;
-try {
-  const gltf = await gltfLoader.loadAsync(u('./assets/models/Room_Portfolio.glb'));
-  root = gltf.scene;
-  scene.add(root);
-  applyMaterialsAndCollect(root);
-  hideKirbyAndNamePlatform(root);
-  hideLowerWindowSillDecos(root);
-  relocateMonitorSideDollsToWindowSill(root);
-  hideMonitorPostItDecalMeshes(root);
-  hideFloorDecalsNearKirby(root);
-  initDynamicSurfaces(root);
-  // Re-apply the intended starting view after the GLB is decoded/added.
-  setStartCamera();
-  controls.update();
-} catch (e) {
-  console.error(e);
-  if (enterBtn) enterBtn.textContent = 'Enter';
-}
-
+gltfLoader.loadAsync(u('./assets/models/Room_Portfolio.glb'))
+  .then((gltf) => {
+    root = gltf.scene;
+    scene.add(root);
+    applyMaterialsAndCollect(root);
+    hideKirbyAndNamePlatform(root);
+    hideLowerWindowSillDecos(root);
+    relocateMonitorSideDollsToWindowSill(root);
+    hideMonitorPostItDecalMeshes(root);
+    hideFloorDecalsNearKirby(root);
+    initDynamicSurfaces(root);
+    // Re-apply the intended starting view after the GLB is decoded/added.
+    setStartCamera();
+    controls.update();
+  })
+  .catch((e) => {
+    console.error(e);
+    if (enterBtn) enterBtn.textContent = 'Enter';
+  });
 // ---------- Interactions (hover + click)
 // Raycaster hits *invisible hitboxes*; we animate the visible mesh.
 
