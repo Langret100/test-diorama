@@ -74,6 +74,16 @@ body{
   inset:0;
   z-index:50;
 }
+/*
+  NOTE:
+  The project already uses the class name "hidden" for the intro overlay fade.
+  We must NOT define a global `.hidden { display:none; }` or it would break
+  the intro transition. Instead, only hide the modal when it's marked hidden.
+*/
+.modal.hidden,
+.modal[aria-hidden="true"]{
+  display:none;
+}
 .modal-backdrop{
   position:absolute;
   inset:0;
