@@ -908,7 +908,7 @@ gltfLoader.loadAsync(u('./assets/models/Room_Portfolio.glb'))
     applyMaterialsAndCollect(root);
     hideKirbyAndNamePlatform(root);
     hideLowerWindowSillDecos(root);
-    relocateMonitorSideDollsToWindowSill(root);
+    // relocateMonitorSideDollsToWindowSill(root); // disabled (keep dolls in original place)
     hideMonitorPostItDecalMeshes(root);
     hideFloorDecalsNearKirby(root);
     initDynamicSurfaces(root);
@@ -1043,16 +1043,8 @@ function hoverIn(obj) {
   if (!obj) return;
   stashInitialTransforms(obj);
 
-  // Piano keys: subtle tilt instead of scale.
-  if (isPianoKey(obj)) {
-    gsap.killTweensOf(obj.rotation);
-    gsap.to(obj.rotation, {
-      x: obj.userData.initialRotation.x - Math.PI / 64,
-      duration: 0.12,
-      ease: 'power2.out'
-    });
-    return;
-  }
+  // Piano keys: disable hover transforms to prevent flicker.
+  if (isPianoKey(obj)) { return; }
 
   const base = obj.userData.initialScale;
   const s = getHoverScale(obj);
@@ -1099,15 +1091,7 @@ function hoverOut(obj) {
   if (!obj) return;
   stashInitialTransforms(obj);
 
-  if (isPianoKey(obj)) {
-    gsap.killTweensOf(obj.rotation);
-    gsap.to(obj.rotation, {
-      x: obj.userData.initialRotation.x,
-      duration: 0.12,
-      ease: 'power2.out'
-    });
-    return;
-  }
+  if (isPianoKey(obj)) { return; }
 
   const base = obj.userData.initialScale;
   gsap.killTweensOf(obj.scale);
